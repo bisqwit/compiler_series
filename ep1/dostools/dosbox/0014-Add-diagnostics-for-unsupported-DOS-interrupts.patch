@@ -1,0 +1,25 @@
+From ecdb57db617d94b7b7858fe1789925564f1f45b6 Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Thu, 28 Dec 2017 16:45:33 +0200
+Subject: [PATCH 14/16] Add diagnostics for unsupported DOS interrupts
+
+---
+ src/dos/dos.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/dos/dos.cpp b/src/dos/dos.cpp
+index a0ae2d3..392c30e 100644
+--- a/src/dos/dos.cpp
++++ b/src/dos/dos.cpp
+@@ -869,7 +869,7 @@ static Bitu DOS_21Handler(void) {
+ 		    break;
+ 		}
+ 		/* END BISQWIT SSH SUPPORT */
+-		E_Exit("Unhandled Dos 21 call %02X",reg_ah);
++		E_Exit("Unhandled Dos 21 call %04X al=%40X",reg_ah,reg_al);
+ 		break;
+ 	case 0x54:					/* Get verify flag */
+ 		reg_al=dos.verify?1:0;
+-- 
+2.15.1
+

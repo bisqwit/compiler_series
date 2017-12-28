@@ -1,0 +1,25 @@
+From f1f36d8bd107f3b007d692a1ed48477cf87eb7d8 Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Sun, 23 Feb 2014 17:29:24 +0200
+Subject: [PATCH 09/16] Grow the memory limit from 64 MB into 2 gigabytes
+
+---
+ src/hardware/memory.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/hardware/memory.cpp b/src/hardware/memory.cpp
+index ba76a8d..3965515 100644
+--- a/src/hardware/memory.cpp
++++ b/src/hardware/memory.cpp
+@@ -29,7 +29,7 @@
+ 
+ #define PAGES_IN_BLOCK	((1024*1024)/MEM_PAGE_SIZE)
+ #define SAFE_MEMORY	32
+-#define MAX_MEMORY	64
++#define MAX_MEMORY	2048
+ #define MAX_PAGE_ENTRIES (MAX_MEMORY*1024*1024/4096)
+ #define LFB_PAGES	512
+ #define MAX_LINKS	((MAX_MEMORY*1024/4)+4096)		//Hopefully enough
+-- 
+2.15.1
+

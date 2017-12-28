@@ -1,0 +1,217 @@
+From cb3aae5079e9712dadb043daa377360db96faf1e Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Sun, 23 Feb 2014 17:24:39 +0200
+Subject: [PATCH 04/16] Add VOX device support (Festival Speech synthesis)
+
+---
+ src/dos/dos_devices.cpp | 182 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 182 insertions(+)
+
+diff --git a/src/dos/dos_devices.cpp b/src/dos/dos_devices.cpp
+index 4e9beb1..37f5607 100644
+--- a/src/dos/dos_devices.cpp
++++ b/src/dos/dos_devices.cpp
+@@ -29,6 +29,12 @@
+ #include "drives.h" //Wildcmp
+ /* Include all the devices */
+ 
++#include <errno.h>    /* BISQWIT, for VOX */
++#include <sys/wait.h> /* BISQWIT, for VOX */
++#include <fcntl.h>    /* BISQWIT, for VOX */
++#include "mixer.h"    /* BISQWIT, for VOX */
++
++
+ #include "dev_con.h"
+ 
+ 
+@@ -57,6 +63,179 @@ public:
+ 	virtual bool WriteToControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode){return false;}
+ };
+ 
++/***/ /* BISQWIT ADDED: Festival speech synthesis thingy */
++template<typename CharT, typename Rt>
++const std::basic_string<CharT>
++str_replace(const std::basic_string<CharT>& search,
++            const Rt& with,
++            const std::basic_string<CharT>& where)
++{
++    std::basic_string<CharT> result;
++    for(std::string::size_type a=0; a < where.size(); )
++    {
++        std::string::size_type b = where.find(search, a);
++        if(b == where.npos)
++        {
++            //result += where.substr(a);
++            result.insert(result.end(), where.begin()+a, where.end());
++            break;
++        }
++        //result += where.substr(a, b-a);
++        result.insert(result.end(), where.begin()+a, where.begin()+b);
++        result += with;
++        a = b + search.size();
++    }
++    return result;
++}
++static void VOX_CallBack(Bitu len);
++static class device_VOX* vox_ptr = 0;
++class device_VOX: public DOS_Device {
++public:
++    device_VOX() : bufs(), whichbuf(0)
++    {
++        vox_ptr = this;
++        SetName("VOX");
++        fd[0] = -1; fd[1] = -1;
++        chan = mixer.Install(VOX_CallBack,48000,"VOX");
++    }
++
++	virtual bool Read(Bit8u * data,Bit16u * size) {
++		for(Bitu i = 0; i < *size;i++) 
++			data[i]=0; 
++		LOG(LOG_IOCTL,LOG_NORMAL)("%s:READ",GetName());
++		return true;
++	}
++	virtual bool Write(Bit8u * data,Bit16u * size)
++	{
++		for(Bitu i = 0; i < *size; ++i)
++		{
++		    if(data[i] == '~' && data[i+1] == '~')
++		        whichbuf = (whichbuf+1) % 2;
++		    else VOX_Add(data[i]);
++		}
++		return true;
++	}
++	virtual bool Seek(Bit32u * pos,Bit32u type) {
++		LOG(LOG_IOCTL,LOG_NORMAL)("%s:SEEK",GetName());
++		return true;
++	}
++	virtual bool Close() { return true; }
++	virtual Bit16u GetInformation(void) { return 0xC884; }
++	virtual bool ReadFromControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode){return false;}
++	virtual bool WriteToControlChannel(PhysPt bufptr,Bit16u size,Bit16u * retcode)
++	{
++		for(Bitu i = 0; i < size; ++i)
++		{
++		    char c = mem_readb(bufptr+i);
++		    if(c == '~' && mem_readb(bufptr+i+1) == '~')
++		        whichbuf = (whichbuf+1) % 2;
++		    else VOX_Add(c);
++		}
++		*retcode = size;
++	}
++private:
++    std::string bufs[2];
++    unsigned whichbuf;
++    MixerObject mixer;
++    MixerChannel* chan;
++    int fd[2];
++private:
++    void VOX_Add(char c)
++    {
++		if(c == '~') bufs[whichbuf] += ' ';
++		else if(c == '{') bufs[whichbuf] += 'ä';
++		else if(c == '|') bufs[whichbuf] += 'ö';
++		else if(c == '$') VOX_process();
++		else bufs[whichbuf] += c;
++    }
++    void VOX_process()
++    {
++        if(fd[0] >= 0) close(fd[0]);
++        if(fd[1] >= 0) close(fd[1]);
++        fprintf(stderr, "Speech 1: %s\n", bufs[0].c_str());
++        fprintf(stderr, "Speech 2: %s\n", bufs[1].c_str());
++        std::string fn1 = "/tmp/vox1.raw";
++        std::string fn2 = "/tmp/vox2.raw";
++        std::string script1 = "(voice_us3_mbrola)";
++        std::string script2 = "(voice_suo_fi_lj_diphone)";
++
++        script1 = "(SynthText \"" + bufs[0] + "\")";
++        script1 = "(utt.wave.rescale " + script1 + " 1.0)";
++        script1 = "(utt.wave.resample " + script1 + " 48000)";
++        script1 = "(utt.save.wave " + script1 + " \"" + fn1 + "\" \"raw\")";
++        script1 = "(voice_us3_mbrola)"        + script1;
++
++        script2 = "(SynthText \"" + bufs[1] + "\")";
++        script2 = "(utt.wave.rescale " + script2 + " 0.2)";
++        script2 = "(utt.wave.resample " + script2 + " 48000)";
++        script2 = "(utt.save.wave " + script2 + " \"" + fn2 + "\" \"raw\")";
++        script2 = "(voice_suo_fi_lj_diphone)" + script2;
++
++        bufs[0].clear();
++        bufs[1].clear();
++        std::string q("'");
++        std::string cmd1 = "echo '" + str_replace(q, "'\\''", script1) + "'|festival";
++        std::string cmd2 = "echo '" + str_replace(q, "'\\''", script2) + "'|festival";
++        fprintf(stderr, "%s\n", cmd1.c_str());
++        fprintf(stderr, "%s\n", cmd2.c_str());
++        int pid1,pid2;
++        fprintf(stderr, "Synthesizing...\n");
++        if(!(pid1=vfork())) { execlp("sh", "sh", "-c", cmd1.c_str(), NULL); _exit(errno); }
++        if(!(pid2=vfork())) { execlp("sh", "sh", "-c", cmd2.c_str(), NULL); _exit(errno); }
++        waitpid(pid1, NULL, 0);
++        waitpid(pid2, NULL, 0);
++        fprintf(stderr, "Synthesized to %s and %s...\n", fn1.c_str(), fn2.c_str());
++        chan->Enable(true);
++        fd[0] = ::open(fn1.c_str(), O_RDONLY); if(fd[0] < 0) perror(fn1.c_str());
++        fd[1] = ::open(fn2.c_str(), O_RDONLY); if(fd[1] < 0) perror(fn2.c_str());
++        whichbuf = 0;
++    }
++public:
++    void VOX_callback(Bitu len)
++    {
++        Bit16s* stream = (Bit16s*) &MixTemp[0];
++        std::vector<Bit16s> buffers[2]; int bufpos[2] = { 0, 0}, buflen[2] = { 0, 0 };
++        buffers[0].resize(len);
++        buffers[1].resize(len);
++        Bitu orig_len = len;
++        while(len)
++        {
++            for(unsigned c=0; c<2; ++c)
++            {
++                if(fd[c] < 0)
++                {
++                got_nothing:
++                    stream[c] = 0;
++                    continue;
++                }
++                if(bufpos[c] < buflen[c])
++                {
++                got_buffer:
++                    stream[c] = buffers[c] [ bufpos[c]++ ];
++                }
++                else
++                {
++                    bufpos[c] = 0;
++                    buflen[c] = 0;
++                    int capacity = len;
++                retry:;
++					int r = read(fd[c], &buffers[c][0], capacity*2);
++					if(r == -1 && (errno == EAGAIN || errno == EINTR)) goto retry;
++					if(r <= 0) { close(fd[c]); fd[c] = -1; goto got_nothing; }
++					buflen[c] = r/2;
++					goto got_buffer;
++                }
++            }
++            if(fd[0] < 0 && fd[1] < 0) break;
++            stream += 2; --len;
++        }
++        chan->AddSamples_s16(orig_len, (Bit16s*) &MixTemp[0]);
++        if(fd[0] < 0 && fd[1] < 0) chan->Enable(false);
++    }
++};
++void VOX_CallBack(Bitu len) { vox_ptr->VOX_callback(len); }
++/***/
++
+ class device_LPT1 : public device_NUL {
+ public:
+    	device_LPT1() { SetName("LPT1");}
+@@ -189,4 +368,7 @@ void DOS_SetupDevices(void) {
+ 	DOS_Device * newdev3;
+ 	newdev3=new device_LPT1();
+ 	DOS_AddDevice(newdev3);
++	DOS_Device * newdev4;
++	newdev4=new device_VOX();
++	DOS_AddDevice(newdev4);
+ }
+-- 
+2.15.1
+

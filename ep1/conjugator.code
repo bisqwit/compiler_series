@@ -1,0 +1,623 @@
+#
+# This file is derived from taipus.cc, which in turn
+# is derived from taipus.rb, and attempts to describe
+# the algorithm so that it's translatable in asm.
+# 
+# It is responsible of conjugating names in the game
+# (Chrono Trigger) in the Finnish language.
+# Also used in Tales of Phantasia.
+#
+# Copyright (C) 1992,2003 Bisqwit ( http://iki.fi/bisqwit/ )
+#
+# The insertor ( http://bisqwit.iki.fi/source/chronotools.html )
+# compiles this to SNES machine code when inserting the script.
+#
+#  Syntax
+#
+#  FUNCTION name
+#     Declare a subroutine.
+#     If parameter given, it's assigned to variable "c".
+#  OUT value
+#     Outputs character in value
+#  VAR name..
+#     Define local variables. All variables are of byte size.
+#     All variables are initialized with the parameter value upon call.
+#     If no parameter was given, then undefined value.
+#  REG name..
+#     Define register variables (work like local variables,
+#     but are stored in the A register instead of the stack).
+#  LET name1 value
+#     Assign name1 from value
+#  INC name
+#     Increment the value of name
+#  DEC name
+#     Decrement the value of name
+#  LOAD_CHAR var number
+#     Gets the numberth character (0+) of the name and stores to var.
+#  LOAD_LAST_CHAR var number
+#     Gets the numberth character (0+) of the name from end and stores to var.
+#  { 
+#     Loop over the character name, store current character in variable "c".
+#  }
+#     End character name loop
+#     Note: Loops may not be nested, but recursion is allowed.
+#  ? name characters
+#     If name is in set, process subblock
+#  = name value
+#     If(name == value), process subblock
+#  TRUE
+#     Return TRUE
+#  FALSE
+#     Return FALSE
+#  RETURN [name]
+#     If name given, return variable
+#     Return from function.
+#  IF name1 [value]
+#     Calls the bool-func name1.
+#     If value given, will be passed as param.
+#     Process subblock if true retval.
+#  CALL_GET name var [param]
+#     Calls the integer-func name, return value to var.
+#  CALL name1 [value]
+#     Calls a function, ignores the return value.
+#     If value given, will be passed as param.
+#
+#  All numeric constants in form 'c' are compiled in
+#  the game's character set instead of ASCII.
+#  Same goes for characters in the "?" command.
+#
+#  The character set of this file is the one specified
+#  in the configuration (currently iso-8859-15).
+#
+# The file may contain as many functions as you wish.
+# The assembly will be conditional on what is actually used.
+#
+# -- Begins here --
+
+# Returns true if the parameter is a vowel.
+FUNCTION IsVowel
+REG c
+? c aeiouyäöåéAEIOUYÄÖÅÉ
+  TRUE
+FALSE
+
+# Returns true if the parameter sounds
+# like a vowel when at end of a word.
+FUNCTION IsVowelTypeChar
+VAR param
+REG c
+LET param c
+IF IsVowel param
+  TRUE
+? param 0123456
+  TRUE
+FALSE
+
+# Is it a vowel which clearly belongs to the 'back' vowel harmony class?
+FUNCTION IsBackVowelTypeChar
+REG c
+? c aouAOU02368
+  TRUE
+FALSE
+
+# Is it a vowel which clearly belongs to the 'front' vowel harmony class?
+FUNCTION IsFrontVowelTypeChar
+REG c
+? c äöyÄÖY14579
+  TRUE
+FALSE
+
+# Is it a vowel which clearly belongs to the 'ambiguous' vowel harmony class?
+FUNCTION IsOtherVowelTypeChar
+REG c
+? c eiéEIÉ
+  TRUE
+FALSE
+
+# Is it a number?
+FUNCTION IsNumber
+REG c
+? c 0123456789
+  TRUE
+FALSE
+
+# Is it a non-vowelish consonant (hard consonant)?
+FUNCTION IsKPT
+REG c
+? c kKpPtT
+  TRUE
+FALSE
+
+# Is the character name front-type (äöy) or back type (aou)?
+FUNCTION IsFront
+VAR VowelType FoundE Finalguess c
+LET VowelType 0
+LET FoundE 0
+LET Finalguess 0
+{
+  LET Finalguess 1
+  IF IsBackVowelTypeChar c
+    LET VowelType 1
+  IF IsFrontVowelTypeChar c
+    LET VowelType 2
+  IF IsOtherVowelTypeChar c
+    LET FoundE 1
+  ? c hkqåHKQÅ
+    # If ends with such char
+    LET Finalguess 0
+}
+= VowelType 2
+  # Last guess was "front"
+  TRUE
+= VowelType 1
+  # Last guess was "back"
+  FALSE
+= FoundE 1
+  TRUE
+= Finalguess 1
+  TRUE
+FALSE
+
+# Calculates the length of the character name
+FUNCTION Length
+VAR Len
+REG c
+LET Len 0
+{
+  INC Len
+}
+RETURN Len
+
+# Returns the Nth last character of the character name
+FUNCTION LastCharN
+REG c
+LOAD_LAST_CHAR c c
+RETURN c
+
+# Returns true if the character name doesn't look pronouncable.
+# This applies to names which contain only consonants or end with numbers.
+FUNCTION IsAbbrev
+VAR Len Vowels WasVowel ElseFlag c
+LET Len 0
+LET Vowels 0
+LET WasVowel 0
+{
+  INC Len
+  LET ElseFlag 1
+  IF IsVowel c
+    LET Vowels 1
+    LET WasVowel 1
+    LET ElseFlag 0
+  IF IsNumber c
+    = WasVowel 1
+      LET Vowels 0
+    #s WasVowel 0
+    #s ElseFlag 0
+  = ElseFlag 1
+    LET WasVowel 0
+}
+= Len 1
+  TRUE
+= Vowels 0
+  TRUE
+FALSE
+
+# Returns true if the character name ends with vowel+s
+FUNCTION IsEs
+REG c2 c
+CALL_GET LastCharN c2 1
+IF IsVowelTypeChar c2
+  CALL_GET LastCharN c 0
+  ? c sS
+    TRUE
+FALSE
+
+# Returns true if the character name ends with "de"
+FUNCTION IsDe
+REG c2 c
+CALL_GET LastCharN c2 1
+? c2 dD
+  CALL_GET LastCharN c 0
+  ? c eE
+    TRUE
+FALSE
+
+# Returns true if the character name
+# looks like it ends with a consonant
+# but actually ends with a vowel when pronounced.
+# This happens for names that end with "ow" (foreign only).
+FUNCTION IsAlien
+REG c2 c1
+CALL_GET LastCharN c1 0
+? c1 Ww
+  CALL_GET LastCharN c2 1
+  ? c2 oO
+    TRUE
+FALSE
+
+# Returs true if the character name ends with a vowel.
+FUNCTION EndWithVowel
+REG c1
+CALL_GET LastCharN c1 0
+IF IsVowelTypeChar c1
+  TRUE
+FALSE
+
+# Returns true if the character name ends with hard consonant * 2 + vowel.
+FUNCTION DoubleHard
+VAR c3
+REG c2
+IF EndWithVowel
+  CALL_GET LastCharN c3 2
+  CALL_GET LastCharN c2 1
+  = c3 c2
+    IF IsKPT c2
+      TRUE
+FALSE
+
+# Returns true if the character name ends with "aki" or "äki".
+FUNCTION AkiEnd
+REG c3 c2 c1
+CALL_GET LastCharN c3 2
+? c3 aAäÄ
+  CALL_GET LastCharN c2 1
+  ? c2 kK
+    CALL_GET LastCharN c1 0
+    ? c1 iI
+      TRUE
+FALSE
+
+# Outputs the given number of letters
+# from the beginning of the character name.
+FUNCTION OutWord
+VAR left c
+LET left c
+{
+  = left 0
+    RETURN
+  DEC left
+  OUT c
+}
+RETURN
+
+# Outputs the character name except the last N.
+FUNCTION OutWordBut
+VAR len left tmp
+REG c
+LET left c
+CALL_GET Length len
+{
+  LET tmp c
+  = len left
+    RETURN
+  DEC len
+  OUT tmp
+}
+RETURN
+
+# Outputs the stem of the word for partitive conjugation.
+# Sample results:
+#     +'t
+#     +:ä
+#     +:a
+#     +:t
+#     +t
+#     +tt
+#  -ki+e
+#     +i
+FUNCTION HardStem
+VAR c
+IF IsAlien
+  CALL OutWordBut 0
+  OUT '''
+  OUT 't'
+  RETURN
+IF IsAbbrev
+  CALL OutWordBut 0
+  OUT ':'
+  CALL_GET LastCharN c 0
+  ? c flmnrswxFLMNRSWX479
+    OUT 'ä'
+    RETURN
+  ? c zZ
+    OUT 'a'
+    RETURN
+  ? c 0123568
+    RETURN
+  OUT 't'
+  RETURN
+IF IsEs
+  CALL OutWordBut 0
+  OUT 't'
+  RETURN
+IF IsDe
+  CALL OutWordBut 0
+  OUT 't'
+  OUT 't'
+  RETURN
+IF EndWithVowel
+  IF AkiEnd
+    CALL OutWordBut 1
+    OUT 'e'
+    RETURN
+  CALL OutWordBut 0
+  RETURN
+CALL OutWordBut 0
+OUT 'i'
+RETURN
+
+# Outputs the stem of the word for most conjugation.
+# Sample results:
+#     +'
+#     +:
+#   -s+kse
+#  -de+tee
+# -xxi+xi
+#     +i
+FUNCTION SoftStem
+REG chr
+IF IsAlien
+  CALL OutWordBut 0
+  OUT '''
+  RETURN
+IF IsAbbrev
+  CALL OutWordBut 0
+  OUT ':'
+  RETURN
+IF IsEs
+  CALL OutWordBut 1
+  OUT 'k'
+  OUT 's'
+  OUT 'e'
+  RETURN
+IF IsDe
+  CALL OutWordBut 2
+  OUT 't'
+  OUT 'e'
+  OUT 'e'
+  RETURN
+IF EndWithVowel
+  IF DoubleHard
+    CALL OutWordBut 2
+    CALL_GET LastCharN chr 0
+    OUT chr
+    RETURN
+  IF AkiEnd
+    CALL OutWordBut 2
+    OUT 'e'
+    RETURN
+  CALL OutWordBut 0
+  RETURN
+CALL OutWordBut 0
+OUT 'i'
+RETURN
+
+# Outputs the stem of the word for essive conjugation.
+FUNCTION EssiveStem
+IF IsAlien
+  CALL OutWordBut 0
+  OUT '''
+  RETURN
+IF IsAbbrev
+  CALL OutWordBut 0
+  OUT ':'
+  RETURN
+IF IsEs
+  CALL OutWordBut 1
+  OUT 'k'
+  OUT 's'
+  OUT 'e'
+  RETURN
+IF IsDe
+  CALL OutWordBut 2
+  OUT 't'
+  OUT 'e'
+  OUT 'e'
+  RETURN
+IF EndWithVowel
+  IF AkiEnd
+    CALL OutWordBut 1
+    OUT 'e'
+    RETURN
+  CALL OutWordBut 0
+  RETURN
+CALL OutWordBut 0
+OUT 'i'
+RETURN
+
+# Outputs the stem of the word for illative conjugation.
+# Sample results:
+#     +'hu
+#     +:aa
+#   -s+ksee
+#  -de+teesee
+# -xxi+xii
+#     +ii
+FUNCTION IllativeStem
+VAR chr
+IF IsAlien
+  CALL OutWordBut 0
+  OUT '''
+  OUT 'h'
+  OUT 'u'
+  RETURN
+IF IsAbbrev
+  CALL OutWordBut 0
+  OUT ':'
+  CALL Out_A
+  CALL Out_A
+  RETURN
+IF IsEs
+  CALL OutWordBut 1
+  OUT 'k'
+  OUT 's'
+  OUT 'e'
+  OUT 'e'
+  RETURN
+IF IsDe
+  CALL OutWordBut 2
+  OUT 't'
+  OUT 'e'
+  OUT 'e'
+  OUT 's'
+  OUT 'e'
+  OUT 'e'
+  RETURN
+IF EndWithVowel
+  IF DoubleHard
+    CALL OutWordBut 2
+    CALL_GET LastCharN chr 0
+    OUT chr
+    OUT chr
+    RETURN
+  IF AkiEnd
+    CALL OutWordBut 2
+    OUT 'e'
+    OUT 'e'
+    RETURN
+  CALL OutWordBut 0
+  CALL_GET LastCharN chr 0
+  OUT chr
+  RETURN
+CALL OutWordBut 0
+OUT 'i'
+OUT 'i'
+RETURN
+
+
+# Outputs a/ä, depending whether the character name is
+# front type (äöy) or back type (aou).
+FUNCTION Out_A
+IF IsFront
+  OUT 'ä'
+  RETURN
+OUT 'a'
+RETURN
+
+# Reference:
+#  http://www.cs.tut.fi/%7ejkorpela/finnish-cases.html
+#
+
+# Outputs the character name conjugated in genitive/accusative (owner/object).
+# Example: "Crono's cat" -> "Cronon kissa" (genitive)
+#          "He found Crono" -> "Hän löysi Cronon" (accusative)
+# In singular, genitive/accusative for nouns look the same.
+FUNCTION Do_N
+CALL SoftStem
+OUT 'n'
+RETURN
+
+# Outputs the character name conjugated in partitive (of/object).
+# Example: "Don't blame Marle" -> "Älä syytä Marlea"
+# (Marle is an unaffected object for action)
+FUNCTION Do_A
+CALL HardStem
+CALL Out_A
+RETURN
+
+# Outputs the character name conjugated in inessive (in).
+# Example: "There's something strange _in_ Frog" -> "Frogissa on jotain outoa"
+FUNCTION Do_SSA
+CALL SoftStem
+OUT 's'
+OUT 's'
+CALL Out_A
+RETURN
+
+# Outputs the character name conjugated in adessive (on/with/has).
+# Example: "Crono has a cat" -> "Cronolla on kissa"
+# (cat is _on_ Crono's possession)
+FUNCTION Do_LLA
+CALL SoftStem
+OUT 'l'
+OUT 'l'
+CALL Out_A
+RETURN
+
+# Outputs the character name conjugated in ablative (from).
+# Example: "He stole it _from_ Marle" -> "Hän varasti sen Marlelta"
+FUNCTION Do_LTA
+CALL SoftStem
+OUT 'l'
+OUT 't'
+CALL Out_A
+RETURN
+
+# Outputs the character name conjugated in allative (to/for).
+# Example: "Give it back _to_ Marle" -> "Anna se takaisin Marlelle"
+FUNCTION Do_LLE
+CALL SoftStem
+OUT 'l'
+OUT 'l'
+OUT 'e'
+RETURN
+
+# Outputs the character name conjugated in elative (from/by).
+# Example: "Ayla thinks Crono is strong" -> "Aylasta Crono on vahva"
+# (_from_ Ayla's opinion)
+FUNCTION Do_STA
+CALL SoftStem
+OUT 's'
+OUT 't'
+CALL Out_A
+RETURN
+
+# Outputs the character name conjugated in abessive (without).
+# Example: "Would be boring _without_ Robo" -> "Robotta olisi tylsää"
+FUNCTION Do_TTA
+CALL SoftStem
+OUT 't'
+OUT 't'
+CALL Out_A
+RETURN
+
+# Outputs the character name conjugated in translative (to (role of)).
+# Example: "He transformed _to_ Magus" -> "Hän muuttui Magukseksi"
+FUNCTION Do_KSI
+CALL SoftStem
+OUT 'k'
+OUT 's'
+OUT 'i'
+RETURN
+
+# Outputs the character name conjugated in essive (as).
+# It needs its own stem function.
+# Example: "What would you do _as_ Lucca?" -> "Mitä tekisit Luccana?"
+FUNCTION Do_NA
+CALL EssiveStem
+OUT 'n'
+CALL Out_A
+RETURN
+
+# Outputs the character name conjugated in illative (-n)
+# It needs its own stem function.
+# Example: "Board Epoch" -> "Astukaa Epochiin"
+#          "Exchange the clone for Crono" -> "Vaihtaa klooni Cronoon"
+# (the noun is a target)
+FUNCTION Do_HUN
+CALL IllativeStem
+OUT 'n'
+RETURN
+
+# Do_?NE(en) (comitative) (together (with) one's) we will
+#                 never need (makes no sense with names)
+# Example: "Come with your Cronos" -> "Tule Cronoinesi"
+
+# Do_??N (instructive) (with (the aid of)) we will
+#          never need (makes no sense with names)
+# Example: "He did it with his Luccas" -> "Hän teki sen Luccineen"
+
+# -- End --
+
+# Some forms:
+#   Matti   (mati matti matti          mattii)
+#   Magus   (magukse magust magukse    maguksee)
+#   John    (johni johni johni         johnii)
+#   XYZ     (xyz: xyz:ä xyz:           xyz:ää)
+#   Säde    (sätee sädett sätee        säteesee)
+#   Mäki    (mäe mäke mäke             mäkee)
+#   Show    (show' show't show'        show'hu)
+# Names not conjugated properly (1.10.2003):
+#   Susi
+#   Satu    (sadu satu satu)
+#   Anitta

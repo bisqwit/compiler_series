@@ -1,0 +1,154 @@
+From 425f729256690c541ac997257b637746b8081b8e Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Sun, 23 Feb 2014 17:32:46 +0200
+Subject: [PATCH 11/16] Add Bisqwit's millisecond timer (required by
+ dos-inputter); also add capture timestamp counter
+
+---
+ include/bios.h            |  2 ++
+ include/pic.h             |  2 ++
+ src/hardware/hardware.cpp |  6 +++++-
+ src/hardware/pic.cpp      |  2 ++
+ src/hardware/timer.cpp    | 21 +++++++++++++++++++++
+ src/ints/bios.cpp         |  8 ++++++++
+ 6 files changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/include/bios.h b/include/bios.h
+index 8f722d6..29de668 100644
+--- a/include/bios.h
++++ b/include/bios.h
+@@ -97,6 +97,8 @@
+ #define BIOS_WAIT_FLAG_TEMP				0x4a1
+ 
+ 
++#define BIOS_TIMER_BISQWIT_MILLISECONDS 0x47c
++
+ #define BIOS_PRINT_SCREEN_FLAG          0x500
+ 
+ #define BIOS_VIDEO_SAVEPTR              0x4a8
+diff --git a/include/pic.h b/include/pic.h
+index 8b6e2f4..d53cb19 100644
+--- a/include/pic.h
++++ b/include/pic.h
+@@ -64,4 +64,6 @@ void PIC_RemoveEvents(PIC_EventHandler handler);
+ void PIC_RemoveSpecificEvents(PIC_EventHandler handler, Bitu val);
+ 
+ void PIC_SetIRQMask(Bitu irq, bool masked);
++
++extern double CAPTURE_BEGIN_STAMP;
+ #endif
+diff --git a/src/hardware/hardware.cpp b/src/hardware/hardware.cpp
+index 42570b2..fb83cba 100644
+--- a/src/hardware/hardware.cpp
++++ b/src/hardware/hardware.cpp
+@@ -287,7 +287,7 @@ static void CAPTURE_VideoHeader() {
+ 		fseek(capture.video.handle, save_pos, SEEK_SET);
+ }
+ 
+-static void CAPTURE_VideoEvent(bool pressed) {
++void CAPTURE_VideoEvent(bool pressed) {
+ 	if (!pressed)
+ 		return;
+ 	if (CaptureState & CAPTURE_VIDEO) {
+@@ -305,6 +305,8 @@ static void CAPTURE_VideoEvent(bool pressed) {
+ 		capture.video.handle = 0;
+ 	} else {
+ 		CaptureState |= CAPTURE_VIDEO;
++		fprintf(stderr, "CAPTURING STARTED\n");
++		CAPTURE_BEGIN_STAMP = PIC_FullIndex();
+ 	}
+ }
+ #endif
+@@ -472,6 +474,8 @@ skip_shot:
+ 			goto skip_video;
+ 		}
+ 		if (!capture.video.handle) {
++    		fprintf(stderr, "Capturing %dx%d, %d bpp at %f fps\n", width, height, (int)bpp, (double) fps);
++
+ 			capture.video.handle = OpenCaptureFile("Video",".avi");
+ 			if (!capture.video.handle)
+ 				goto skip_video;
+diff --git a/src/hardware/pic.cpp b/src/hardware/pic.cpp
+index fde8502..a2584ec 100644
+--- a/src/hardware/pic.cpp
++++ b/src/hardware/pic.cpp
+@@ -55,6 +55,8 @@ Bitu PIC_IRQCheck;
+ Bitu PIC_IRQOnSecondPicActive;
+ Bitu PIC_IRQActive;
+ 
++double CAPTURE_BEGIN_STAMP=0;
++
+ 
+ static IRQ_Block irqs[16];
+ static PIC_Controller pics[2];
+diff --git a/src/hardware/timer.cpp b/src/hardware/timer.cpp
+index a4a7c50..941bf2d 100644
+--- a/src/hardware/timer.cpp
++++ b/src/hardware/timer.cpp
+@@ -27,6 +27,8 @@
+ #include "timer.h"
+ #include "setup.h"
+ 
++#include "bios.h" // BISQWIT
++
+ static INLINE void BIN2BCD(Bit16u& val) {
+ 	Bit16u temp=val%10 + (((val/10)%10)<<4)+ (((val/100)%10)<<8) + (((val/1000)%10)<<12);
+ 	val=temp;
+@@ -394,6 +396,21 @@ void TIMER_SetGate2(bool in) {
+ 	gate2 = in; //Set it here so the counter_latch above works
+ }
+ 
++static void BISQWIT_MILLISECOND_TIMER_Handler(Bitu)
++{
++	static unsigned lastvalue = 0;
++	Bit32u value = mem_readd(BIOS_TIMER_BISQWIT_MILLISECONDS) + 1;
++	if(value != lastvalue+1)
++	{
++    	fprintf(stderr, "SOMETHING CHANGED TIMER: EXPECTED %u+1, got %u\n", lastvalue, value-1);
++    }
++	value = lastvalue+1;
++	lastvalue = value;
++	mem_writed(BIOS_TIMER_BISQWIT_MILLISECONDS,value);
++    PIC_AddEvent(BISQWIT_MILLISECOND_TIMER_Handler,1);
++}
++
++
+ class TIMER:public Module_base{
+ private:
+ 	IO_ReadHandleObject ReadHandler[4];
+@@ -445,6 +462,10 @@ public:
+ 		latched_timerstatus_locked=false;
+ 		gate2 = false;
+ 		PIC_AddEvent(PIT0_Event,pit[0].delay);
++
++        /* BISQWIT */
++		mem_writed(BIOS_TIMER_BISQWIT_MILLISECONDS,0);
++		PIC_AddEvent(BISQWIT_MILLISECOND_TIMER_Handler,1);
+ 	}
+ 	~TIMER(){
+ 		PIC_RemoveEvents(PIT0_Event);
+diff --git a/src/ints/bios.cpp b/src/ints/bios.cpp
+index a61bfe5..10619de 100644
+--- a/src/ints/bios.cpp
++++ b/src/ints/bios.cpp
+@@ -372,9 +372,17 @@ static Bitu INT11_Handler(void) {
+ #ifndef DOSBOX_CLOCKSYNC
+ #define DOSBOX_CLOCKSYNC 0
+ #endif
++
+ static Bitu INT8_Handler(void) {
+ 	/* Increase the bios tick counter */
+ 	Bit32u value = mem_readd(BIOS_TIMER) + 1;
++	{double i = PIC_FullIndex() - CAPTURE_BEGIN_STAMP;
++	fprintf(stderr, "\rTimer: %.3f (%ld:%.3f) or %.3f",
++	    i * 1e-3,
++	    (long)(i / 60000),
++	    (i/60000 - (long)(i / 60000))*60,
++	    mem_readd(BIOS_TIMER_BISQWIT_MILLISECONDS) / 1000.0
++	 ); fflush(stderr);}
+ #if DOSBOX_CLOCKSYNC
+ 	static bool check = false;
+ 	if((value %50)==0) {
+-- 
+2.15.1
+

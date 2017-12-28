@@ -1,0 +1,128 @@
+From 2d41f6b2603c8db4d1402295b628e0b7f27d63dc Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Sun, 23 Feb 2014 17:27:49 +0200
+Subject: [PATCH 07/16] forkpty/Linux-inside-DOS/terminal support extension
+
+---
+ src/dos/dos.cpp | 91 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 91 insertions(+)
+
+diff --git a/src/dos/dos.cpp b/src/dos/dos.cpp
+index 35eb73e..a0ae2d3 100644
+--- a/src/dos/dos.cpp
++++ b/src/dos/dos.cpp
+@@ -22,6 +22,14 @@
+ #include <string.h>
+ #include <ctype.h>
+ #include <time.h>
++
++#include <sys/fcntl.h>
++#include <unistd.h>
++#include <pty.h>
++#include <signal.h>
++#include <sys/wait.h>
++#include <errno.h>
++
+ #include "dosbox.h"
+ #include "bios.h"
+ #include "mem.h"
+@@ -32,6 +40,8 @@
+ #include "support.h"
+ #include "serialport.h"
+ 
++#include "pic.h"
++
+ DOS_Block dos;
+ DOS_InfoBlock dos_infoblock;
+ 
+@@ -778,6 +788,87 @@ static Bitu DOS_21Handler(void) {
+ //TODO Think hard how shit this is gonna be
+ //And will any game ever use this :)
+ 	case 0x53:					/* Translate BIOS parameter block to drive parameter block */
++		/* BISQWIT LINUX SHELL SUPPORT */
++		{
++		    switch(reg_al)
++		    {
++		        case 0: /* open */
++		        {
++		            int fd = -1, pid = -1;
++					struct winsize ws;
++					memset(&ws, 0, sizeof ws);
++					ws.ws_row = reg_cx;
++					ws.ws_col = reg_dx;
++					
++					pid = forkpty(&fd, NULL, NULL, &ws);
++					if(!pid)
++					{
++						putenv("TERM=linux");
++						execl(getenv("SHELL"), getenv("SHELL"), "-i", "-l", NULL);
++						// not reached
++					}
++					fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
++					reg_bx = fd;
++					reg_cx = pid;
++					break;
++		        }
++		        case 1: /* close */
++		        {
++		            kill(reg_cx, SIGKILL);
++		            close(reg_bx);
++		            waitpid(reg_cx, NULL, 0);
++		            break;
++		        }
++		        case 2: /* send */
++		        {
++		            int fd = reg_bx; Bit16u towrite = reg_cx;
++		            unsigned char* bisqdata = new unsigned char[towrite];
++		            MEM_BlockRead(SegPhys(ds)+reg_dx, bisqdata, towrite);
++		            reg_cx = write(fd, bisqdata, towrite);
++		            //fprintf(stderr, "Sent <%.*s>\n", (int)reg_cx, bisqdata);
++		            delete[] bisqdata;
++		            break;
++		        }
++		        case 3: /* read */
++		        {
++		            int fd = reg_bx; Bit16u toread = reg_cx;
++		            if(toread > 0)
++		            {
++						unsigned char* bisqdata = new unsigned char[toread];
++						int r = read(fd, bisqdata, toread);
++						if(r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
++						    r = 0;
++						if(r > 0) MEM_BlockWrite(SegPhys(ds)+reg_dx, bisqdata, r);
++						reg_cx = r;
++						reg_dx = r < 0 ? errno : 0;
++						//if(r > 0) fprintf(stderr, "Read <%.*s>\n", r, bisqdata);
++						delete[] bisqdata;
++		            }
++		            break;
++		        }
++		        case 4: /* resize */
++		        {
++		            struct winsize ws;
++		            memset(&ws, 0, sizeof(ws));
++		            ws.ws_row = reg_cx;
++		            ws.ws_col = reg_dx;
++		            ioctl(reg_bx, TIOCSWINSZ, &ws);
++		            break;
++		        }
++		        case 0x7E:
++		        {
++		            static FILE* fp = fopen("input.log", "wb");
++		            double timestamp = PIC_FullIndex() - CAPTURE_BEGIN_STAMP;
++		            unsigned short key = reg_bx;
++		            fwrite(&timestamp, sizeof(timestamp), 1, fp),
++		            fwrite(&key,       sizeof(key), 1, fp),
++		            fflush(fp);
++		            break;
++		        }
++		    }
++		    break;
++		}
++		/* END BISQWIT SSH SUPPORT */
+ 		E_Exit("Unhandled Dos 21 call %02X",reg_ah);
+ 		break;
+ 	case 0x54:					/* Get verify flag */
+-- 
+2.15.1
+

@@ -1,0 +1,51 @@
+From 6de9d2b0541f4595df3ea219235095deccbcebe3 Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Sun, 23 Feb 2014 17:20:19 +0200
+Subject: [PATCH 01/16] Add CAPTURE command (so capturing can be started
+ automatically)
+
+---
+ include/shell.h          | 1 +
+ src/shell/shell_cmds.cpp | 7 +++++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/include/shell.h b/include/shell.h
+index 7d1f3c0..d502b20 100644
+--- a/include/shell.h
++++ b/include/shell.h
+@@ -111,6 +111,7 @@ public:
+ 	void CMD_PATH(char * args);
+ 	void CMD_SHIFT(char * args);
+ 	void CMD_VER(char * args);
++	void CMD_CAPTURE(char * args);
+ 	/* The shell's variables */
+ 	Bit16u input_handle;
+ 	BatchFile * bf;
+diff --git a/src/shell/shell_cmds.cpp b/src/shell/shell_cmds.cpp
+index 49ff827..1eac7f2 100644
+--- a/src/shell/shell_cmds.cpp
++++ b/src/shell/shell_cmds.cpp
+@@ -64,6 +64,7 @@ static SHELL_Cmd cmd_list[]={
+ {	"SUBST",	1,			&DOS_Shell::CMD_SUBST,		"SHELL_CMD_SUBST_HELP"},
+ {	"TYPE",		0,			&DOS_Shell::CMD_TYPE,		"SHELL_CMD_TYPE_HELP"},
+ {	"VER",		0,			&DOS_Shell::CMD_VER,		"SHELL_CMD_VER_HELP"},
++{   "CAPTURE",  0,          &DOS_Shell::CMD_CAPTURE,    "SHELL_CMD_CAPTURE_HELP"},
+ {0,0,0,0}
+ }; 
+ 
+@@ -226,6 +227,12 @@ void DOS_Shell::CMD_HELP(char * args){
+ 	}
+ }
+ 
++extern void CAPTURE_VideoEvent(bool pressed);
++void DOS_Shell::CMD_CAPTURE(char * args){
++	HELP("CAPTURE");
++	CAPTURE_VideoEvent(true);
++}
++
+ void DOS_Shell::CMD_RENAME(char * args){
+ 	HELP("RENAME");
+ 	StripSpaces(args);
+-- 
+2.15.1
+

@@ -1,0 +1,34 @@
+From 41711bb7f24c5d6603c00c0077c1d5923b049d51 Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Thu, 28 Dec 2017 16:45:48 +0200
+Subject: [PATCH 15/16] Disable splash fade timer
+
+---
+ src/gui/sdl_gui.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/gui/sdl_gui.cpp b/src/gui/sdl_gui.cpp
+index d5d746e..9951abe 100644
+--- a/src/gui/sdl_gui.cpp
++++ b/src/gui/sdl_gui.cpp
+@@ -156,7 +156,7 @@ static GUI::ScreenSDL *UI_Startup(GUI::ScreenSDL *screen) {
+ 
+ 	// fade out
+ 	SDL_Event event;
+-	for (int i = 0xff; i > 0; i -= 0x11) {
++	if(false) for (int i = 0xff; i > 0; i -= 0x11) {
+ 		SDL_SetAlpha(screenshot, SDL_SRCALPHA, i);
+ 		SDL_BlitSurface(background, NULL, sdlscreen, NULL);
+ 		SDL_BlitSurface(screenshot, NULL, sdlscreen, NULL);
+@@ -184,7 +184,7 @@ static void UI_Shutdown(GUI::ScreenSDL *screen) {
+ 
+ 	// fade in
+ 	SDL_Event event;
+-	for (int i = 0x00; i < 0xff; i += 0x11) {
++	if(false) for (int i = 0x00; i < 0xff; i += 0x11) {
+ 		SDL_SetAlpha(screenshot, SDL_SRCALPHA, i);
+ 		SDL_BlitSurface(background, NULL, sdlscreen, NULL);
+ 		SDL_BlitSurface(screenshot, NULL, sdlscreen, NULL);
+-- 
+2.15.1
+

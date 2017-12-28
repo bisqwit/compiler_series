@@ -1,0 +1,93 @@
+From e5b07a2e0500dc83d83dfd22e00d58bb1cfebbaf Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Sun, 23 Feb 2014 17:25:07 +0200
+Subject: [PATCH 05/16] Compilation fixes
+
+---
+ include/dos_inc.h      | 2 ++
+ src/Makefile.am        | 3 ++-
+ src/Makefile.in        | 3 ++-
+ src/gui/sdl_mapper.cpp | 2 ++
+ src/libs/zmbv/zmbv.cpp | 4 ++--
+ 5 files changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/include/dos_inc.h b/include/dos_inc.h
+index 290d76b..c19f77a 100644
+--- a/include/dos_inc.h
++++ b/include/dos_inc.h
+@@ -21,6 +21,8 @@
+ #ifndef DOSBOX_DOS_INC_H
+ #define DOSBOX_DOS_INC_H
+ 
++#include <stddef.h>
++
+ #ifndef DOSBOX_DOS_SYSTEM_H
+ #include "dos_system.h"
+ #endif
+diff --git a/src/Makefile.am b/src/Makefile.am
+index 184469e..306c22f 100644
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -13,7 +13,8 @@ endif
+ 
+ dosbox_SOURCES = dosbox.cpp $(ico_stuff)
+ dosbox_LDADD = cpu/libcpu.a debug/libdebug.a dos/libdos.a fpu/libfpu.a  hardware/libhardware.a gui/libgui.a \
+-               ints/libints.a misc/libmisc.a shell/libshell.a hardware/serialport/libserial.a libs/gui_tk/libgui_tk.a
++               ints/libints.a misc/libmisc.a shell/libshell.a hardware/serialport/libserial.a libs/gui_tk/libgui_tk.a \
++               -lutil
+ 
+ EXTRA_DIST = winres.rc dosbox.ico
+ 
+diff --git a/src/Makefile.in b/src/Makefile.in
+index 93abab8..9987721 100644
+--- a/src/Makefile.in
++++ b/src/Makefile.in
+@@ -218,7 +218,8 @@ SUBDIRS = cpu debug dos fpu gui hardware libs ints misc shell platform
+ @HAVE_WINDRES_TRUE@ico_stuff = winres.rc
+ dosbox_SOURCES = dosbox.cpp $(ico_stuff)
+ dosbox_LDADD = cpu/libcpu.a debug/libdebug.a dos/libdos.a fpu/libfpu.a  hardware/libhardware.a gui/libgui.a \
+-               ints/libints.a misc/libmisc.a shell/libshell.a hardware/serialport/libserial.a libs/gui_tk/libgui_tk.a
++               ints/libints.a misc/libmisc.a shell/libshell.a hardware/serialport/libserial.a libs/gui_tk/libgui_tk.a \
++               -lutil
+ 
+ EXTRA_DIST = winres.rc dosbox.ico
+ all: all-recursive
+diff --git a/src/gui/sdl_mapper.cpp b/src/gui/sdl_mapper.cpp
+index c905c05..a3f24c7 100644
+--- a/src/gui/sdl_mapper.cpp
++++ b/src/gui/sdl_mapper.cpp
+@@ -2385,7 +2385,9 @@ void MAPPER_StartUp(Section * sec) {
+ 	mapper.sticks.num_groups=0;
+ 	Bitu i;
+ 	for (i=0; i<16; i++) {
++	    if(i < MAX_VJOY_BUTTONS)
+ 		virtual_joysticks[0].button_pressed[i]=false;
++	    if(i < MAX_VJOY_BUTTONS)
+ 		virtual_joysticks[1].button_pressed[i]=false;
+ 		virtual_joysticks[0].hat_pressed[i]=false;
+ 		virtual_joysticks[1].hat_pressed[i]=false;
+diff --git a/src/libs/zmbv/zmbv.cpp b/src/libs/zmbv/zmbv.cpp
+index d45e56a..ec5c9ce 100644
+--- a/src/libs/zmbv/zmbv.cpp
++++ b/src/libs/zmbv/zmbv.cpp
+@@ -348,7 +348,7 @@ int VideoCodec::FinishCompressFrame( void ) {
+ 			AddXorFrame<short>();
+ 			break;
+ 		case ZMBV_FORMAT_32BPP:
+-			AddXorFrame<long>();
++			AddXorFrame<int>();
+ 			break;
+ 		}
+ 	}
+@@ -469,7 +469,7 @@ bool VideoCodec::DecompressFrame(void * framedata, int size) {
+ 			UnXorFrame<short>();
+ 			break;
+ 		case ZMBV_FORMAT_32BPP:
+-			UnXorFrame<long>();
++			UnXorFrame<int>();
+ 			break;
+ 		}
+ 	}
+-- 
+2.15.1
+

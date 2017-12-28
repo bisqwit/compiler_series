@@ -1,0 +1,7 @@
+
+find c,s:      { return *s ? *s==c ? 1 : find(c,s+1) : 0; }
+Length s:      { var result=0; while(*s++) {++result;} return result; }
+LastCharN s,n: return s[Length(s)-n;
+
+// Returns true if the name ends with "aki" or "äki"
+AkiEnd s:      return find(LastCharN(s, 2), "kK") && find(LastCharN(s,1), "iI") && find(LastCharN(s,3), "aAäÄ")

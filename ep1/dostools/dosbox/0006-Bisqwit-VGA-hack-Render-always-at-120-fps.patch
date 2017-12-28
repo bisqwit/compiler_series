@@ -1,0 +1,137 @@
+From 0d3b0114fc7e4a0512e39e05beeb4b738e745a7a Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Sun, 23 Feb 2014 17:27:11 +0200
+Subject: [PATCH 06/16] Bisqwit VGA hack: Render always at 120 fps
+
+---
+ src/gui/render.cpp        | 36 ++++++++++++++++++++++++------------
+ src/hardware/vga_draw.cpp | 19 +++++++++++++------
+ 2 files changed, 37 insertions(+), 18 deletions(-)
+
+diff --git a/src/gui/render.cpp b/src/gui/render.cpp
+index 1ba6097..f3caa32 100644
+--- a/src/gui/render.cpp
++++ b/src/gui/render.cpp
+@@ -32,6 +32,8 @@
+ #include "hardware.h"
+ #include "support.h"
+ 
++#include "pic.h"
++
+ #include "render_scalers.h"
+ 
+ Render_t render;
+@@ -201,23 +203,33 @@ static void RENDER_Halt( void ) {
+ }
+ 
+ extern Bitu PIC_Ticks;
++
++static unsigned long FramesSent = 0;
++
+ void RENDER_EndUpdate( bool abort ) {
+ 	if (GCC_UNLIKELY(!render.updating))
+ 		return;
+ 	RENDER_DrawLine = RENDER_EmptyLineHandler;
+ 	if (GCC_UNLIKELY(CaptureState & (CAPTURE_IMAGE|CAPTURE_VIDEO))) {
+-		Bitu pitch, flags;
+-		flags = 0;
+-		if (render.src.dblw != render.src.dblh) {
+-			if (render.src.dblw) flags|=CAPTURE_FLAG_DBLW;
+-			if (render.src.dblh) flags|=CAPTURE_FLAG_DBLH;
+-		}
+-		float fps = render.src.fps;
+-		pitch = render.scale.cachePitch;
+-		if (render.frameskip.max)
+-			fps /= 1+render.frameskip.max;
+-		CAPTURE_AddImage( render.src.width, render.src.height, render.src.bpp, pitch,
+-			flags, fps, (Bit8u *)&scalerSourceCache, (Bit8u*)&render.pal.rgb );
++        double timestamp = (PIC_FullIndex() - CAPTURE_BEGIN_STAMP) * 1e-3;
++        unsigned long FramesShouldBeSent = timestamp * 120;
++        while(FramesSent < FramesShouldBeSent)
++        {
++            ++FramesSent;
++
++            Bitu pitch, flags;
++            flags = 0;
++            if (render.src.dblw != render.src.dblh) {
++                if (render.src.dblw) flags|=CAPTURE_FLAG_DBLW;
++                if (render.src.dblh) flags|=CAPTURE_FLAG_DBLH;
++            }
++            float fps = render.src.fps;
++            pitch = render.scale.cachePitch;
++            if (render.frameskip.max)
++                fps /= 1+render.frameskip.max;
++            CAPTURE_AddImage( render.src.width, render.src.height, render.src.bpp, pitch,
++                flags, fps, (Bit8u *)&scalerSourceCache, (Bit8u*)&render.pal.rgb );
++        }
+ 	}
+ 	if ( render.scale.outWrite ) {
+ 		GFX_EndUpdate( abort? NULL : Scaler_ChangedLines );
+diff --git a/src/hardware/vga_draw.cpp b/src/hardware/vga_draw.cpp
+index 33ee8cd..f0ba8c6 100644
+--- a/src/hardware/vga_draw.cpp
++++ b/src/hardware/vga_draw.cpp
+@@ -377,7 +377,8 @@ static Bit8u * VGA_TEXT_Draw_Line(Bitu vidstart, Bitu line) {
+ 		*draw++=(fg&mask1) | (bg&~mask1);
+ 		*draw++=(fg&mask2) | (bg&~mask2);
+ 	}
+-	if (!vga.draw.cursor.enabled || !(vga.draw.cursor.count&0x8)) goto skip_cursor;
++	/* BISQWIT FPS-hack change:  blink rate 8 (for default 70fps) -> 14 */
++	if (!vga.draw.cursor.enabled || !((vga.draw.cursor.count/14)&1)) goto skip_cursor;
+ 	font_addr = (vga.draw.cursor.address-vidstart) >> 1;
+ 	if (font_addr>=0 && font_addr<(Bits)vga.draw.blocks) {
+ 		if (line<vga.draw.cursor.sline) goto skip_cursor;
+@@ -426,7 +427,8 @@ static Bit8u * VGA_TEXT_Herc_Draw_Line(Bitu vidstart, Bitu line) {
+ 			*draw++=(fg&mask2) | (bg&~mask2);
+ 		}
+ 	}
+-	if (!vga.draw.cursor.enabled || !(vga.draw.cursor.count&0x8)) goto skip_cursor;
++	/* BISQWIT FPS-hack change:  blink rate 8 (for default 70fps) -> 14 */
++	if (!vga.draw.cursor.enabled || !((vga.draw.cursor.count/14)&1)) goto skip_cursor;
+ 	font_addr = (vga.draw.cursor.address-vidstart) >> 1;
+ 	if (font_addr>=0 && font_addr<(Bits)vga.draw.blocks) {
+ 		if (line<vga.draw.cursor.sline) goto skip_cursor;
+@@ -470,7 +472,8 @@ static Bit8u * VGA_TEXT_Xlat16_Draw_Line(Bitu vidstart, Bitu line) {
+ 			*draw++ = vga.dac.xlat16[(mask2>>8*i)&0xff];
+ 		}
+ 	}
+-	if (!vga.draw.cursor.enabled || !(vga.draw.cursor.count&0x8)) goto skip_cursor;
++	/* BISQWIT FPS-hack change:  blink rate 8 (for default 70fps) -> 14 */
++	if (!vga.draw.cursor.enabled || !((vga.draw.cursor.count/14)&1)) goto skip_cursor;
+ 	font_addr = (vga.draw.cursor.address-vidstart) >> 1;
+ 	if (font_addr>=0 && font_addr<(Bits)vga.draw.blocks) {
+ 		if (line<vga.draw.cursor.sline) goto skip_cursor;
+@@ -530,7 +533,8 @@ static Bit8u * VGA_TEXT_Draw_Line_9(Bitu vidstart, Bitu line) {
+ 			else font=(vga.draw.font_tables[(col >> 3)&1][chr*32+line])<<pel_pan;
+ 		}
+ 	}
+-	if (!vga.draw.cursor.enabled || !(vga.draw.cursor.count&0x8)) goto skip_cursor;
++	// BISQWIT FPS-hack change:  blink rate 8 (for default 70fps) -> 14
++	if (!vga.draw.cursor.enabled || !((vga.draw.cursor.count/14)&1)) goto skip_cursor;
+ 	font_addr = (vga.draw.cursor.address-vidstart) >> 1;
+ 	if (font_addr>=0 && font_addr<(Bits)vga.draw.blocks) {
+ 		if (line<vga.draw.cursor.sline) goto skip_cursor;
+@@ -592,7 +596,8 @@ static Bit8u * VGA_TEXT_Xlat16_Draw_Line_9(Bitu vidstart, Bitu line) {
+ 			else font=(vga.draw.font_tables[(col >> 3)&1][chr*32+line])<<pel_pan;
+ 		}
+ 	}
+-	if (!vga.draw.cursor.enabled || !(vga.draw.cursor.count&0x8)) goto skip_cursor;
++	/* BISQWIT FPS-hack change:  blink rate 8 (for default 70fps) -> 14 */
++	if (!vga.draw.cursor.enabled || !((vga.draw.cursor.count/14)&1)) goto skip_cursor;
+ 	font_addr = (vga.draw.cursor.address-vidstart) >> 1;
+ 	if (font_addr>=0 && font_addr<(Bits)vga.draw.blocks) {
+ 		if (line<vga.draw.cursor.sline) goto skip_cursor;
+@@ -1127,7 +1132,9 @@ void VGA_SetupDrawing(Bitu /*val*/) {
+ #endif
+ 	if (!htotal) return;
+ 	if (!vtotal) return;
+-	
++
++	clock = vtotal*htotal*120; // BISQWIT HACK: FORCE 120fps
++
+ 	// The screen refresh frequency
+ 	fps=(double)clock/(vtotal*htotal);
+ 	// Horizontal total (that's how long a line takes with whistles and bells)
+-- 
+2.15.1
+

@@ -1,0 +1,179 @@
+<?php
+
+define('IN_FILE', 'conj.cc.lst');
+define('SAVE_FILE', 'conj.y');
+define('SHOW_PLAN',   true);
+define('FINAL_OUTPUT', false);
+
+define('PLAN_SHOW_OUTSIDES', 3); // Max 3 lines outside visible area
+
+define('MAX_LEVEL', 99900);
+define('DEFAULT_SPEED', 'ÿÿ'); // Default speed: 22/16
+define('COMMENT_SPEED', 'ÿÿ'); // 13/16
+
+define('ATLAST', "ÿÿd\r".DELAY100s."ÿÿx\r\rexit\r\r");
+
+define('FORCE_SPEED', false);
+#define('FORCE_SPEED', 4);
+
+$screens = Array
+(
+  #        textdims  font  double c64
+  10   => [F4.F4.F4.F4.F4.F4.F4.F4.F4.F4,                 100,25, 9,16, 0,0],
+  130  => ["".UP.UP.UP.UP.UP.UP.RT."\r".SF1."104 40\r", 104,40, 8,12, 0,0],
+  155  => [SF1."104 54\r",                               104,54,  8,12, 0,0 ],
+  200 => ["".DN.DN.DN.DN."\r".SF1."124 60\r",           124,60,  8, 8, 0,0 ],
+  700 => [SF1."130 60\r",                    130,60,  8, 8, 0,0 ],
+  920 => [SF1."140 60\r",                    140,60,  8, 8, 0,0 ],
+  1100 => [SF1."112 50\r",                   112,50,  8, 8, 0,0 ],
+  1230 => [SF1."140 50\r",                   140,50,  8, 8, 0,0 ],
+  2000 => [SF1."118 63\r",                   118,63,  8, 8, 0,0 ],
+);
+
+$line_anchor = Array
+(
+  # Line number to make the first visible line on screen,
+  # relative to the first line that gets edited
+  #170 => 36,
+  #200 => 3,
+  520 => 6,
+  550 => 15,
+  590 => 38,
+  
+  700 => 9,
+  800 => 33, 801 => 0,
+  825 => 9,
+  920 => 33,
+  950 => 54,
+  970 => 30,
+  1001 => 6,
+  1005 => 5,
+  1100 => 13,
+  1190 => 15,
+  1400 => 31,
+  1500 => 24, 1545 => 3, 1585 => 42,
+  
+  2000 => 0,
+  2049 => 2, // deindent
+  2050 => 2
+);
+
+$selections = Array
+(
+  #201 => Array(0 => "%right '"),
+);
+
+$turbo_ranges = Array
+(
+  558 => 4, // comments in ENUM_EXPRESSION
+  971 => 2, // comment for is_pure()
+  2001 => 1, 2049 => 1, // spaces in bison rules
+
+  # make_xx() in lexer
+  1200 => 9, 1201 => 8, 1202 => 7, 1203 => 6, 1204 => 5, 1205 => 4,
+  1235 => 9, 1236 => 8, 1237 => 7, 1238 => 6, 1239 => 5,
+);
+
+// Delay performed before this number
+$bigdelay = Array(
+  /*** PHASE 1 ***/
+  20, // Add symbols for operator tokens
+  100,101,102,103,110, // Begin syntax
+
+  // Adding precedences (brings 256 shift-reduce conflicts to zero)
+  200,
+
+  // Fixing the wrong parsing of var
+  300,
+  360,361,
+  
+  // Brood on the var-fixing before adding headers
+  500,
+  // Brood on bison declarations
+  515,
+  
+  // Pause before adding the expression{} fields
+  542,544,545,
+  
+  // Pause before adding the expression types
+  550,555,
+  // Pause for explaining expressions,
+  // Before adding convenience functions e_*
+  590,
+  
+  // Pause before lexcontext
+  700,
+  770, // Pause before define() contents
+  
+  // Pause after adding scope things,
+  // before adding #defines M and C
+  800,
+  // After M and C, start adding syntax
+  810,
+  // After first contex
+  815,
+  // After function decl, before adding %type
+  820,
+  // Before first expr
+  830, 835,
+  // Before comma expressions
+  840,
+  // After comma expressions, before fcall and []
+  850,
+  // Before adding simple exprs
+  855, 860,861,
+  // Before adding unary exprs
+  865,
+  // Before compound stmt
+  900,
+  // Before "if and "while"
+  910,915,
+  // Before variable definitions
+  918,
+  // Before += and -=
+  920,921,925,
+  // Before ++ and --
+  930,935,940,945,
+  // Before ?:
+  950,
+  // Add is_pure() function
+  970,
+  // Let's move on -- remember %locations?
+  1000,1001,1010,1020,
+  // Next up: Lexer
+  1021,
+  // Before adding %{}
+  1110,
+  // Some syntax rules
+  1120,1125,1130,1135,1140,
+  // Before adding returns to lexer
+  1150,
+  // Newlines produce recursion
+  1165,
+  // '.' rule
+  1170,1175,
+  // re2c settings
+  1180,
+  // IDENTIFIER,STRINGCONST,NUMCONST... what do they return?
+  1190, 1191,
+  // Solving with conj_parser::make_()
+  1200,1205,
+  // Add context
+  1210,1220,1230,1235,
+  // How the concept is used: error function
+  1300,
+  // Add main()
+  1400,
+  // Add stringify()
+  1500,
+  // After printing test, add textbox to stringify()
+  1590,
+  // Add indent for error blocks
+  2000,2001,2010,
+  // After adding error{}s for binary operators, before unaries
+  2020,
+  // After adding cl_*, before p_expr1 (required parens expr)
+  2040,
+
+  /*** PHASE 2 ***/
+);

@@ -1,0 +1,383 @@
+From 99bc28f0b1542b557e310b99b294c3627396587c Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Sun, 23 Feb 2014 17:31:14 +0200
+Subject: [PATCH 10/16] Work on making a MIDI synthesizer that also records the
+ synthesized sound
+
+---
+ src/gui/midi.cpp        |   2 +
+ src/gui/midi_dummy.h    |  40 +++++++++
+ src/hardware/mpu401.cpp | 222 ++++++++++++++++++++++++++++++++++++++++++++----
+ 3 files changed, 248 insertions(+), 16 deletions(-)
+ create mode 100644 src/gui/midi_dummy.h
+
+diff --git a/src/gui/midi.cpp b/src/gui/midi.cpp
+index 61d15e5..a1553b9 100644
+--- a/src/gui/midi.cpp
++++ b/src/gui/midi.cpp
+@@ -98,6 +98,8 @@ MidiHandler Midi_none;
+ 
+ #endif
+ 
++#include "midi_dummy.h"
++
+ static struct {
+ 	Bitu status;
+ 	Bitu cmd_len;
+diff --git a/src/gui/midi_dummy.h b/src/gui/midi_dummy.h
+new file mode 100644
+index 0000000..77c994e
+--- /dev/null
++++ b/src/gui/midi_dummy.h
+@@ -0,0 +1,40 @@
++/*
++ *  Copyright (C) 2002-2010  The DOSBox Team
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2 of the License, or
++ *  (at your option) any later version.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with this program; if not, write to the Free Software
++ *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
++ */
++
++#include <fcntl.h>
++#define SEQ_MIDIPUTC    5
++
++class MidiHandler_dummy: public MidiHandler {
++private:
++	int  device;
++	Bit8u device_num;
++	bool isOpen;
++public:
++	MidiHandler_dummy() : MidiHandler(),isOpen(false) {};
++	const char * GetName(void) { return "dummy";};
++	bool Open(const char * conf) { return true; }
++	void Close(void) { }
++	void PlayMsg(Bit8u * msg) { }
++	void PlaySysex(Bit8u * sysex,Bitu len) { }
++};
++
++MidiHandler_dummy Midi_dummy;
++
++
++
++
+diff --git a/src/hardware/mpu401.cpp b/src/hardware/mpu401.cpp
+index 333e106..147b459 100644
+--- a/src/hardware/mpu401.cpp
++++ b/src/hardware/mpu401.cpp
+@@ -26,6 +26,14 @@
+ #include "cpu.h"
+ #include "support.h"
+ 
++
++#include "pic.h"
++#include "mixer.h"
++#include "SDL_net.h"
++#include <vector>
++#include <fcntl.h>
++#include <unistd.h>
++
+ void MIDI_RawOutByte(Bit8u data);
+ bool MIDI_Available(void);
+ 
+@@ -117,13 +125,196 @@ static Bitu MPU401_ReadStatus(Bitu port,Bitu iolen) {
+ 	return ret;
+ }
+ 
++#include <vector>
++namespace MIDIsynth
++{
++    static const unsigned rate = 48000;
++    static const unsigned data_port = 12305, cmd_port = 12307;
++    MixerObject mixerObject;
++    MixerChannel* chan = 0;
++    FILE* timidity_pipe;
++    TCPsocket timidity_ctrl_socket;
++    TCPsocket timidity_data_socket;
++    Bit32u lastTicks;
++
++    std::vector<unsigned char> buffer;
++    size_t still_expect_n;
++
++    static void SendTimingEvent()
++    {
++		return;
++		Bitu passed = PIC_Ticks - lastTicks; // milliseconds
++		lastTicks = PIC_Ticks;
++		unsigned char TimingEvent[8] =
++		{
++		    0x81, // EV_TIMING
++		    0x01, // TMR_WAIT_REL,
++		    0, 0, // padding,
++		    (passed >> 0 ) & 0xFF,
++		    (passed >> 8 ) & 0xFF,
++		    (passed >> 16) & 0xFF,
++		    (passed >> 24) & 0xFF
++		};
++		SDLNet_TCP_Send(timidity_data_socket, TimingEvent, 8);
++    }
++    static void DoBuffer()
++    {
++		return;
++		for(size_t a=0; a<buffer.size(); ++a)
++    		MIDI_RawOutByte( buffer[a] ); // To gui/midi.cpp
++
++		if(!chan->enabled)
++		{
++		    chan->Enable(true);
++		}
++
++		if(!buffer.empty())
++		{
++			/* Convert the buffer contents into something /dev/sequencer understands */
++			unsigned char Event[8] =
++				{ 0, 0, buffer[0] & 0xF0, buffer[0] & 0x0F,
++				  buffer.size() >= 1 ? buffer[1] : 0,
++				  buffer.size() >= 2 ? buffer[2] : 0,
++				  0, 0 };
++			switch(buffer[0] & 0xF0)
++			{
++				case 0x80: // MIDI_NOTEOFF
++				case 0x90: // MIDI_NOTEON
++				case 0xA0: // MIDI_KEY_PRESSURE
++					Event[0] = 0x93; // EV_CHN_VOICE
++					break;
++				case 0xD0: // MIDI_CHN_PRESSURE
++					Event[0] = 0x92; // EV_CHN_COMMON
++					break;
++				case 0xC0: // MIDI_PGM_CHANGE
++					Event[0] = 0x92; // EV_CHN_COMMON
++					break;
++				case 0xB0: // MIDI_CTL_CHANGE
++					Event[0] = 0x92; // EV_CHN_COMMON
++					Event[6] = buffer[2] & 0x7F;
++					break;
++				case 0xE0: // MIDI_PITCH_BEND
++					Event[0] = 0x92; // EV_CHN_COMMON
++					Event[6] = buffer[1];
++					Event[7] = buffer[2];
++					break;
++				default:
++					break;
++			}
++			if(Event[0])
++				SDLNet_TCP_Send(timidity_data_socket, &Event[0], 8);
++			buffer.clear();
++	    }
++    }
++	static void RawOutBeginSeq(unsigned nbytes)
++	{
++	    still_expect_n += nbytes;
++	}
++	static void RawOutByteAuto(unsigned char value)
++	{
++		return;
++		if(value & 0x80)
++		{
++		    SendTimingEvent();
++		    DoBuffer();
++		}
++		buffer.push_back(value);
++	}
++	static void RawOutByte(unsigned char value)
++	{
++		return;
++	    if(still_expect_n > 0)
++	    {
++	        buffer.push_back(value);
++	        still_expect_n -= 1;
++	        if(still_expect_n == 0)
++	        {
++	            DoBuffer();
++	        }
++	    }
++	    else
++	        RawOutByteAuto(value);
++	}
++	static void RawOutBytes(unsigned nbytes, ...)
++	{
++		return;
++	    RawOutBeginSeq(nbytes);
++	    va_list ap;
++	    va_start(ap, nbytes);
++	    while(nbytes-- > 0)
++	        RawOutByte( va_arg(ap,int) );
++	    va_end(ap);
++	}
++	static void DoCallBack(Bitu samples)
++	{
++		return;
++	    SDLNet_TCP_Send(timidity_ctrl_socket, "OPEN lsb\n", 9);
++	    //LOG_MSG("MPU-401: Trying to receive %u samples...", samples);
++	    samples *= 2; // stereo
++	    Bit16s buf[1024];
++	    while(samples > 0)
++	    {
++	        Bitu todo = samples > 1024 ? 1024 : samples;
++	        int n = fread(&buf, todo, 2, timidity_pipe);
++	        if(n == 0) break;
++    	    LOG_MSG("MPU-401: Received %d, wanted %d...", n, samples);
++	        chan->AddSamples_s16(n/2, buf);
++	        samples -= n;
++	    }
++	}
++	static void Install()
++	{
++		return;
++		if(!SDLNetInited) {
++			if(SDLNet_Init() == -1){
++				LOG_MSG("SDLNet_Init failed: %s\n", SDLNet_GetError());
++				return;
++			}
++			SDLNetInited = true;
++		}
++
++	    LOG_MSG("MPU-401:Installing callback");
++	    chan = mixerObject.Install(DoCallBack, rate, "MIDI");
++	    chan->SetScale( 2.0 );
++	    lastTicks = PIC_Ticks;
++
++	    char Buf[1024];
++	    sprintf(Buf, "timidity -OrS1 -s %u -o - -q 0.1/0 -ir %u %u", rate, cmd_port, data_port);
++	    LOG_MSG("MPU-401:Launching TiMiDity++");
++	    timidity_pipe = popen(Buf, "r");
++	    setbuf(timidity_pipe, NULL);
++        fcntl(fileno(timidity_pipe), F_SETFL,
++            fcntl(fileno(timidity_pipe), F_GETFL) | O_NONBLOCK);
++	    IPaddress addr;
++	    SDLNet_ResolveHost(&addr, "localhost", cmd_port);
++	    LOG_MSG("MPU-401:Connecting to TiMiDity++ ctrl port");
++	    for(;;)
++	    {
++	        timidity_ctrl_socket = SDLNet_TCP_Open(&addr);
++	        if(timidity_ctrl_socket) break;
++	        usleep(100000);
++	    }
++	    LOG_MSG("MPU-401:Sending command to TiMiDity++ ctrl port");
++	    SDLNet_TCP_Send(timidity_ctrl_socket, "OPEN lsb\n", 9);
++	    SDLNet_ResolveHost(&addr, "localhost", data_port);
++	    LOG_MSG("MPU-401:Connecting to TiMiDity++ data port");
++	    for(;;)
++	    {
++	        timidity_data_socket = SDLNet_TCP_Open(&addr);
++	        if(timidity_data_socket) break;
++	        usleep(100000);
++	    }
++	    LOG_MSG("MPU-401:Connected to TiMiDity++ data port");
++	}
++};
++
+ static void MPU401_WriteCommand(Bitu port,Bitu val,Bitu iolen) {
+ 	mpu.state.reset=0;
+ 	if (val<=0x2f) {
+ 		switch (val&3) { /* MIDI stop, start, continue */
+-			case 1: {MIDI_RawOutByte(0xfc);break;}
+-			case 2: {MIDI_RawOutByte(0xfa);break;}
+-			case 3: {MIDI_RawOutByte(0xfb);break;}
++			case 1: {MIDIsynth::RawOutBytes(1,0xfc);break;}
++			case 2: {MIDIsynth::RawOutBytes(1,0xfa);break;}
++			case 3: {MIDIsynth::RawOutBytes(1,0xfb);break;}
+ 		}
+ 		if (val&0x20) LOG(LOG_MISC,LOG_ERROR)("MPU-401:Unhandled Recording Command %x",val);
+ 		switch (val&0xc) {
+@@ -131,9 +322,7 @@ static void MPU401_WriteCommand(Bitu port,Bitu val,Bitu iolen) {
+ 				PIC_RemoveEvents(MPU401_Event);
+ 				mpu.state.playing=false;
+ 				for (Bitu i=0xb0;i<0xbf;i++) {	/* All notes off */
+-					MIDI_RawOutByte(i);
+-					MIDI_RawOutByte(0x7b);
+-					MIDI_RawOutByte(0);
++					MIDIsynth::RawOutBytes(3, i, 0x7B, 0);
+ 				}
+ 				break;
+ 			case 0x8:	/* Play */
+@@ -223,9 +412,7 @@ static void MPU401_WriteCommand(Bitu port,Bitu val,Bitu iolen) {
+ 		case 0xb9:	/* Clear play map */
+ 		case 0xb8:	/* Clear play counters */
+ 			for (Bitu i=0xb0;i<0xbf;i++) {	/* All notes off */
+-				MIDI_RawOutByte(i);
+-				MIDI_RawOutByte(0x7b);
+-				MIDI_RawOutByte(0);
++				MIDIsynth::RawOutBytes(3, i, 0x7B, 0);
+ 			}
+ 			for (Bitu i=0;i<8;i++) {
+ 				mpu.playbuf[i].counter=0;
+@@ -291,7 +478,7 @@ static Bitu MPU401_ReadData(Bitu port,Bitu iolen) {
+ }
+ 
+ static void MPU401_WriteData(Bitu port,Bitu val,Bitu iolen) {
+-	if (mpu.mode==M_UART) {MIDI_RawOutByte(val);return;}
++	if (mpu.mode==M_UART) {MIDIsynth::RawOutByteAuto(val);return;}
+ 	switch (mpu.state.command_byte) {	/* 0xe# command data */
+ 		case 0x00:
+ 			break;
+@@ -354,10 +541,10 @@ static void MPU401_WriteData(Bitu port,Bitu val,Bitu iolen) {
+ 						return;
+ 					default: /* MIDI with running status */
+ 						cnt++;
+-						MIDI_RawOutByte(mpu.playbuf[mpu.state.channel].value[0]);
++						MIDIsynth::RawOutByteAuto(mpu.playbuf[mpu.state.channel].value[0]);
+ 				}
+ 		}
+-		if (cnt<length) {MIDI_RawOutByte(val);cnt++;}
++		if (cnt<length) {MIDIsynth::RawOutByteAuto(val);cnt++;}
+ 		if (cnt==length) {
+ 			mpu.state.wsd=0;
+ 			mpu.state.channel=mpu.state.old_chan;
+@@ -365,7 +552,7 @@ static void MPU401_WriteData(Bitu port,Bitu val,Bitu iolen) {
+ 		return;
+ 	}
+ 	if (mpu.state.wsm) {	/* Directly send system message */
+-		if (val==MSG_EOX) {MIDI_RawOutByte(MSG_EOX);mpu.state.wsm=0;return;}
++		if (val==MSG_EOX) {MIDIsynth::RawOutByteAuto(MSG_EOX);mpu.state.wsm=0;return;}
+ 		if (mpu.state.wsd_start) {
+ 			mpu.state.wsd_start=0;
+ 			cnt=0;
+@@ -378,7 +565,7 @@ static void MPU401_WriteData(Bitu port,Bitu val,Bitu iolen) {
+ 					length=0;
+ 			}
+ 		}
+-		if (!length || cnt<length) {MIDI_RawOutByte(val);cnt++;}
++		if (!length || cnt<length) {MIDIsynth::RawOutByteAuto(val);cnt++;}
+ 		if (cnt==length) mpu.state.wsm=0;
+ 		return;
+ 	}
+@@ -474,14 +661,15 @@ static void MPU401_IntelligentOut(Bit8u chan) {
+ 		case T_MARK:
+ 			val=mpu.playbuf[chan].sys_val;
+ 			if (val==0xfc) {
+-				MIDI_RawOutByte(val);
++				MIDIsynth::RawOutByteAuto(val);
+ 				mpu.state.amask&=~(1<<chan);
+ 				mpu.state.req_mask&=~(1<<chan);
+ 			}
+ 			break;
+ 		case T_MIDI_NORM:
++			MIDIsynth::RawOutBeginSeq(mpu.playbuf[chan].vlength);
+ 			for (Bitu i=0;i<mpu.playbuf[chan].vlength;i++)
+-				MIDI_RawOutByte(mpu.playbuf[chan].value[i]);
++				MIDIsynth::RawOutByte(mpu.playbuf[chan].value[i]);
+ 			break;
+ 		default:
+ 			break;
+@@ -612,6 +800,8 @@ public:
+ 		ReadHandler[0].Install(0x330,&MPU401_ReadData,IO_MB);
+ 		ReadHandler[1].Install(0x331,&MPU401_ReadStatus,IO_MB);
+ 	
++		MIDIsynth::Install();
++
+ 		mpu.queue_used=0;
+ 		mpu.queue_pos=0;
+ 		mpu.mode=M_UART;
+-- 
+2.15.1
+

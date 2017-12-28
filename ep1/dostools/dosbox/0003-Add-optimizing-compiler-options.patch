@@ -1,0 +1,79 @@
+From 1a024505b5ea92f22f1765a54622960ae547eb00 Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Sun, 23 Feb 2014 17:22:04 +0200
+Subject: [PATCH 03/16] Add optimizing compiler options
+
+---
+ Makefile.am | 2 ++
+ Makefile.in | 4 ++--
+ configure   | 8 ++++----
+ 3 files changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/Makefile.am b/Makefile.am
+index 31fcda1..f6ad746 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -2,3 +2,5 @@
+ 
+ EXTRA_DIST = autogen.sh
+ SUBDIRS = src include docs visualc_net
++CXXFLAGS += -Ofast -march=native -ftree-vectorize
++CFLAGS += -Ofast -march=native -ftree-vectorize
+diff --git a/Makefile.in b/Makefile.in
+index 83ff21a..e7ad735 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -114,12 +114,12 @@ AUTOMAKE = @AUTOMAKE@
+ AWK = @AWK@
+ CC = @CC@
+ CCDEPMODE = @CCDEPMODE@
+-CFLAGS = @CFLAGS@
++CFLAGS = @CFLAGS@ -Ofast -march=native -ftree-vectorize
+ CPP = @CPP@
+ CPPFLAGS = @CPPFLAGS@
+ CXX = @CXX@
+ CXXDEPMODE = @CXXDEPMODE@
+-CXXFLAGS = @CXXFLAGS@
++CXXFLAGS = @CXXFLAGS@ -Ofast -march=native -ftree-vectorize
+ CYGPATH_W = @CYGPATH_W@
+ DEFS = @DEFS@
+ DEPDIR = @DEPDIR@
+diff --git a/configure b/configure
+index 0dbc2e3..d7d4c49 100755
+--- a/configure
++++ b/configure
+@@ -3728,13 +3728,13 @@ if test "$ac_test_CFLAGS" = set; then
+   CFLAGS=$ac_save_CFLAGS
+ elif test $ac_cv_prog_cc_g = yes; then
+   if test "$GCC" = yes; then
+-    CFLAGS="-g -O2"
++    CFLAGS="-g -Ofast -march=native -ftree-vectorize"
+   else
+     CFLAGS="-g"
+   fi
+ else
+   if test "$GCC" = yes; then
+-    CFLAGS="-O2"
++    CFLAGS="-Ofast -march=native -ftree-vectorize"
+   else
+     CFLAGS=
+   fi
+@@ -4402,13 +4402,13 @@ if test "$ac_test_CXXFLAGS" = set; then
+   CXXFLAGS=$ac_save_CXXFLAGS
+ elif test $ac_cv_prog_cxx_g = yes; then
+   if test "$GXX" = yes; then
+-    CXXFLAGS="-g -O2"
++    CXXFLAGS="-g -Ofast -march=native -ftree-vectorize"
+   else
+     CXXFLAGS="-g"
+   fi
+ else
+   if test "$GXX" = yes; then
+-    CXXFLAGS="-O2"
++    CXXFLAGS="-Ofast -march=native -ftree-vectorize"
+   else
+     CXXFLAGS=
+   fi
+-- 
+2.15.1
+

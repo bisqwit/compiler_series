@@ -1,0 +1,33 @@
+From c7af9861551796b32a0c160f712885636f0c0dae Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Sun, 24 Jan 2016 19:43:42 +0200
+Subject: [PATCH 13/16] Video capture diagnostics
+
+---
+ src/hardware/hardware.cpp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/hardware/hardware.cpp b/src/hardware/hardware.cpp
+index fb83cba..734b9fe 100644
+--- a/src/hardware/hardware.cpp
++++ b/src/hardware/hardware.cpp
+@@ -462,6 +462,7 @@ skip_shot:
+ 			capture.video.bpp != bpp ||
+ 			capture.video.fps != fps)) 
+ 		{
++    		fprintf(stderr, "Capturing stopped because video specifications changed\n");
+ 			CAPTURE_VideoEvent(true);
+ 		}
+ 		CaptureState &= ~CAPTURE_VIDEO;
+@@ -471,6 +472,8 @@ skip_shot:
+ 		case 16:format = ZMBV_FORMAT_16BPP;break;
+ 		case 32:format = ZMBV_FORMAT_32BPP;break;
+ 		default:
++    		fprintf(stderr, "Capturing unavailable because bpp is %d\n", bpp);
++    		if(bpp == 0) CaptureState |= CAPTURE_VIDEO;
+ 			goto skip_video;
+ 		}
+ 		if (!capture.video.handle) {
+-- 
+2.15.1
+

@@ -1,0 +1,25 @@
+From c54473c33bdbbc886e6be3ac9c245cdff2902527 Mon Sep 17 00:00:00 2001
+From: Joel Yliluoma <joel.yliluoma@iki.fi>
+Date: Sun, 23 Feb 2014 17:29:03 +0200
+Subject: [PATCH 08/16] Remove splash screen (sorry DOSBox developers)
+
+---
+ src/gui/sdlmain.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/gui/sdlmain.cpp b/src/gui/sdlmain.cpp
+index 6bbc24c..f50b17b 100644
+--- a/src/gui/sdlmain.cpp
++++ b/src/gui/sdlmain.cpp
+@@ -1170,7 +1170,7 @@ static void GUI_StartUp(Section * sec) {
+ //#endif
+ 
+ /* Please leave the Splash screen stuff in working order in DOSBox. We spend a lot of time making DOSBox. */
+-	SDL_Surface* splash_surf = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, rmask, gmask, bmask, 0);
++	SDL_Surface* splash_surf = 0;//SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, rmask, gmask, bmask, 0);
+ 	if (splash_surf) {
+ 		SDL_FillRect(splash_surf, NULL, SDL_MapRGB(splash_surf->format, 0, 0, 0));
+ 
+-- 
+2.15.1
+
