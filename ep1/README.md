@@ -14,7 +14,7 @@
 * `jit-conj-parser2.png` Expression structure design sheet
 * `jit-conj-parser4.png` Illustrations of wrong parses
 * `jit-conj-parser5.png` An annotation to the grammar design sheet
-* `video_material/` Other material from made for the video
+* `video_material/` Other material made for the video
 
 * `ccat/` The tool that I used to list syntax-colored source files from command prompt
 * `dostools/` All the DOS-based tools used in or written for the video.

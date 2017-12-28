@@ -1,3 +1,6 @@
 [submodule "ep1/textbox"]
 	path = ep1/textbox
 	url = https://gist.github.com/458048c60d271ab2536665cb81595c6b.git
+[submodule "ep1/dostools/inputter"]
+	path = ep1/dostools/inputter
+	url = git://bisqwit.iki.fi/inputter.git

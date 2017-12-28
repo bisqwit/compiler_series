@@ -56,7 +56,7 @@ This can be used to verify the validity of the script(s).
 It runs simulation for all the editing steps and produces
 the output that would be generated after all those.
 
-You can optimally specify a number that limits the process
+You can optionally specify a number that limits the process
 until the given step number. The step numbers are those that
 are given in the first column of the `lst` file,
 and those that are listed in the headers in the `-p` output.
