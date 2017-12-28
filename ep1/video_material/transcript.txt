@@ -1,0 +1,2352 @@
+Dobry wieczór!
+
+Sometimes you just need
+to create a compiler.
+
+There are not many good
+reasons to make one today.
+
+Maybe exercise.
+
+But when I made the JRPG translations,
+I really needed one:
+
+Compilers like GCC and Clang
+just do not target
+
+the 5A22 that is in
+the Super Nintendo.
+
+Creating a compiler begins –
+
+from defining the language
+you are compiling.
+
+The inaugural challenge,
+that this compiler is designed for,
+
+is a function library –
+
+that performs declension
+of people names –
+
+according to the
+rules of Finnish grammar.
+
+So I sketched out
+this example program,
+
+in my new imaginary language,
+in sort of a pseudo-code,
+
+but keeping in mind that –
+
+I am going to create
+a compiler for it.
+
+I put just enough features
+into the language –
+
+that it is actually usable,
+
+but still minimal enough –
+
+that we can keep this video
+concise and to the point.
+
+In retrospect, the language
+is almost identical to B,
+
+the predecessor to the
+C programming language.
+
+For instance, we have statements
+like “return”, “while”, and “if”.
+
+We have function calls, where the
+function name is given first,
+
+followed by parentheses,
+
+followed by the list
+of expressions –
+
+that are evaluted for
+the function parameters.
+
+We have some expressions and operators,
+like the minus operator,
+
+the array indexing operator,
+and so on.
+
+Each statement ends in a semicolon,
+just like in C and B,
+
+and we also have
+the compound statement,
+
+which does not end
+in a semicolon.
+
+The function declaration itself
+is a bit simpler than in C or B.
+
+It begins with the function name,
+followed by the list of parameters.
+
+The function declaration
+ends with a colon character,
+
+followed by a single statement
+that comprises the function body.
+
+To include multiple statements
+in the function body,
+
+you would use the compound-statement
+just like in C.
+
+Variables can be defined
+inside functions.
+
+After some consideration,
+just like in the B language,
+
+I decided that just one type
+of variable is enough.
+
+In B, all variables are declared
+with the word “auto”;
+
+but I decided to use
+the word “var” instead.
+
+This variable type
+is an integer variable,
+
+but it also acts like
+a character-pointer where applicable.
+
+So yeah, I also had to
+add pointers into the language.
+
+A pointer is a variable that just “points”
+to another resource somewhere.
+
+So I have the asterisk operator,
+which dereferences a pointer.
+
+Its counterpart is the ampersand operator,
+which takes the address of a variable.
+
+Now that we have pretty good
+idea about the language,
+
+it is time to formalize the language.
+
+The formalization process begins –
+
+from defining all the atoms
+that make up a program.
+
+These are the building blocks,
+
+that make every single program
+in this language.
+
+We have four reserved words:
+“if”, “while”, “return” and “var”.
+
+We have several single-character
+or double-character operators –
+
+for various purposes.
+
+And we have four special tokens –
+
+for anything that is more complex
+than a fixed character sequence.
+
+First, there are identifiers.
+
+These are all the function names
+and variable names.
+
+Any time you see a function name –
+
+or a variable name in the code,
+that is an identifier right there.
+
+Then we have integer literals.
+
+When the code contains numbers
+that are not part of identifiers,
+
+they are integer literals.
+
+This language only supports integers,
+not decimal or floating point numbers.
+
+String literals are expressions –
+
+that begin with a double-quote
+and end in another double-quote.
+
+To be clear, this language
+does not have a string type.
+
+Just like in B and C
+programming languages,
+
+string constants are
+actually pointer values,
+
+that point to the specific
+location in memory,
+
+where the compiler put
+the sequence of characters –
+
+that comprise the string.
+
+And finally there is
+the end-of-file token,
+
+which is necessary to
+distinguish where the code ends.
+
+You may be wondering.
+
+The source files also contain
+white-space and comments.
+
+How are those accounted for?
+
+White-space and comments are not tokens.
+
+While they are not totally ignored —
+
+they are considered separators
+that separate tokens,
+
+but they are not tokens.
+
+In other words, the presence
+of white-space or comments –
+
+does not affect the structure of the program.
+
+We only care about grammatical elements.
+
+All programs are essentially
+streams of tokens.
+
+For example, here is how a sample
+function is divided into tokens.
+
+All programs look like this
+to compilers at some point.
+
+All parsers, regardless of
+how they are implemented,
+
+essentially work on these tokens streams,
+and try to make sense of it.
+
+And here’s how it happens.
+We use a grammar.
+
+Programs in this language
+are comprised of functions.
+
+It begins with either a function,
+or the end-of-file.
+
+After a successfully parsed function,
+
+the only possible continuations
+are another function, or the end-of-file.
+
+All valid programs follow this pattern.
+
+What is a function?
+
+This is function.
+
+A function begins with an identifier.
+This is the function name.
+
+After the function name,
+there are two options:
+
+Either an identifier, or a colon.
+
+If there is an identifier,
+it is a function parameter name.
+
+After the identifier,
+there are two options:
+
+Either a comma, or a colon.
+
+If there is comma, another
+identifier must follow.
+
+This may be looped as many times
+as there are parameters to the function.
+
+In any case, eventually
+there must be a colon.
+
+This denotes the end of
+the parameters list.
+
+After the colon,
+
+there must be a statement,
+which comprises the function body.
+
+After the successful
+parsing of a statement,
+
+the function parsing is completed.
+
+We could merge these rules
+into a single definition,
+
+like this:
+	
+These two definitions are identical.
+
+For the computer, they convey
+exactly the same grammar.
+
+But for us humans, it is convenient
+to group the grammar –
+
+into these separate
+re-usable definitions.
+
+This makes the grammar
+easier to understand.
+
+Now, in this grammar,
+
+there is still one part
+that has not been explored.
+
+It is this blue node.
+What is a statement?
+
+Our grammar just says,
+that at this point –
+
+there has to be a statement.
+
+All of the other nodes
+are self-explanatory.
+
+Identifiers, commas and colons
+are called terminals.
+
+They are atoms, tokens,
+that cannot be expanded further.
+
+But “function” and “statement”
+are non-terminal:
+
+They need a definition that
+explains what they contain.
+
+The definition of “statement”
+in my language is like this:
+
+Yes, this is much more complex
+than the “function” definition was.
+
+There are seven alternative paths.
+
+Each denoting a different
+type of a statement.
+
+First, there is the
+compound statement.
+
+A compound statement is when
+you have an opening brace,
+
+followed by zero or more statements,
+followed by a closing brace.
+
+Then, there is the conditional statement.
+
+The conditional statement
+begins with the “if” keyword.
+
+Then it must be followed
+by an opening parenthesis,
+
+and then it must be
+followed by an expression,
+
+and then a closing parenthesis,
+and finally another statement.
+
+Yes, the definitions can be recursive!
+A statement may include other statements.
+
+Then, there is the loop statement.
+
+The loop statement begins
+with the “while” keyword.
+
+Then it must be followed
+by an opening parenthesis,
+
+and then it must be
+followed by an expression,
+
+and then a closing parenthesis,
+and finally another statement.
+
+This another statement is the body of the loop.
+
+The return-statement begins
+with the “return” keyword,
+
+followed by an expression,
+followed by a semicolon.
+
+Both the expression and
+the semicolon are mandatory.
+
+Then there is the variable
+declaration statement.
+
+I will leave it as an exercise
+to figure out how to interpret that one.
+
+Finally, a statement may also be
+an expression followed by a semicolon,
+
+or just a single semicolon,
+which does nothing.
+
+All of these seven options
+are valid statements.
+
+An important trait of
+this grammar to keep in mind –
+
+is that at the beginning
+of the statement parsing,
+
+just peeking the next token, one token,
+
+is enough to determine which
+of these seven paths to follow.
+
+If the next token is an opening brace,
+it’s a compound statement.
+
+If the next token is “if”,
+it’s the conditional statement.
+
+If the next token is “while”,
+it’s the loop statement.
+
+If the next token is “return”,
+it’s the return statement.
+
+If the next token is “var”,
+it’s the variable declaration.
+
+If the next token is a semicolon,
+it’s the last path.
+
+Otherwise it must be
+the second-to-last option,
+
+which is an expression,
+that we are yet to define.
+
+This is the grammar so far.
+
+There is still one non-terminal
+that we haven’t defined.
+
+It’s the “expression”.
+
+And it is the most complex of all!
+
+Expressions are the values
+you do your mathematics with.
+
+Your function parameters are expressions.
+Your function calls are expressions, too.
+
+When you assign a value into a variable,
+that’s an expression right there.
+
+Both the value you assign,
+and the assignment itself.
+
+When your code contains an integer literal,
+that’s an expression right there.
+
+When your code contains a string literal,
+that’s an expression too!
+
+When it contains an identifier,
+that’s also a valid expression,
+
+provided that’s in a context
+where an expression is expected.
+
+An expression may begin with
+the opening parenthesis,
+
+followed by an expression,
+followed by a closing parenthesis.
+
+There are a number of different
+kinds of expressions –
+
+that I added to this grammar.
+
+Binary expressions are your
+everyday mathematics operators,
+
+and also comparison
+and logical operators.
+
+The assignment is also a binary expression.
+
+Binary means that there are –
+
+two expressions and one operator,
+which together become one expression.
+
+There are unary expressions.
+
+In unary expressions, you have
+one expression and one operator,
+
+and together they become one expression.
+
+This includes expressions like
+negating, pointer dereference,
+
+pre-incrementing and post-incrementing.
+
+Just for swag I also added
+the ternary if-then-else operator.
+
+It combines three expressions
+and two operators,
+
+forming one expression as a result.
+
+And thus, the grammar is finished.
+There are no undefined non-terminals left.
+
+Now I realize this is
+not a complete definition.
+
+It lacks the operator precedences,
+
+but bear with me, it will be coming
+later at 22:15 in this video.
+
+This graph shows how to parse any program –
+
+in this made-up B-like programming language.
+
+If the image is unreadable
+in the video, don’t worry,
+
+there is a downloadable copy in the resources listed in the video description.
+
+Now, we can move on to coding.
+
+For the next part, I am going
+to use a tool called GNU Bison.
+
+GNU Bison is a parser-generator,
+
+which generates C or C++ code
+for a very efficient parser –
+
+when given the grammar
+description in a text file.
+
+The best way to learn how it works,
+in my opinion,
+
+is to dive straight into it,
+and explain it as we go.
+
+To make things clear,
+
+what I am going to write
+here is a C++ program,
+
+with some special syntax –
+
+that is parsed by Bison
+and converted into a parser engine.
+
+Just like before,
+
+the process begins by listing
+the tokens that we are going to use.
+
+We have the reserved words,
+the placeholders for literal expressions,
+
+and the various operators.
+
+For convenience’s sake
+I am going to add aliases to these tokens,
+
+so that we can refer to the tokens by
+the very same character sequences –
+
+that they are in the actual source code file.
+
+Then, we move on to the grammar.
+
+Rules in Bison looks like this:
+
+There is a goal.
+
+This goal is the name of a non-terminal.
+
+It describes the outcome
+of the process of parsing.
+
+Say, we want to describe
+what constitutes a statement.
+
+The goal is followed by components
+that fulfill the goal.
+
+These items can be terminals,
+or they can be other non-terminals.
+
+Here, "return" and semicolon are terminals,
+but expression is a non-terminal.
+
+This sequence of a goal and its
+components is called a rule.
+
+One goal may have multiple alternative
+sequences of components,
+
+that fulfill the same goal.
+
+Each of these alternatives is a
+separate rule for the same outcome.
+
+Now let’s study how Bison
+actually does the parsing.
+
+At the core of Bison –
+
+there are two important concepts:
+a stack, and a state machine.
+
+The state machine is a loop,
+where it reads tokens,
+
+and based on this token and the current state,
+it chooses what to do.
+
+There are two kinds of actions:
+Shift, and reduce.
+
+Shift means that the parser
+still needs to read more tokens –
+
+in order to make a decision.
+
+The previous token and its associated
+data is pushed into the stack.
+
+Reduce means that the parser
+has come into a decision:
+
+A particular rule has been matched.
+
+When this happens,
+three things will commence:
+
+First, contingent code associated
+with that rule will be executed.
+
+We will get back to that later.
+
+Secondly, the components of the
+rule will be removed from the stack,
+
+and the product of the rule
+will be pushed into the stack.
+
+There are also other types of actions,
+like errors, and the accept state,
+
+but these two are the important ones
+that you need to be aware of.
+
+Now let’s go back to
+the example grammar from earlier.
+
+There are four rules
+in this partial grammar.
+
+The state machine generated for
+this grammar might look like this.
+
+Because this is an incomplete grammar,
+
+for example “expression” was not defined,
+I have omitted some parts.
+
+But the idea is that in each state,
+the parser looks up the next token,
+
+and uses that information to choose
+whether to shift or to reduce next.
+
+Here is a brief disclaimer.
+
+Now let’s go back to the compiler.
+
+The first rule is that a library
+is comprised of a list of functions.
+
+What is this “functions”, then?
+
+A “functions” is this sequence:
+
+an “identifier”, followed by
+parameter declarations,
+
+followed by a colon,
+followed by a statement.
+
+Or, nothing.
+
+The fulfillment of either
+rule counts as “functions”.
+
+Either we get a single function definition,
+or we get absolutely nothing.
+
+Both are valid fulfillments of this non-terminal.
+Zero or one functions.
+
+But wait, didn’t the grammar,
+at five minutes in the video,
+
+say there can be any number of functions
+from zero to infinity, not just zero or one?
+
+Yes!
+
+Here is a little cheat-sheet
+on how to make rules –
+
+that contain an indeterminate
+number of components.
+
+The first three examples are trivial:
+These rules have a fixed shape.
+
+Either they match the specified
+number of components, or not.
+
+The fourth rule specifies that
+the rule matches if a thing is found,
+
+but it also matches if a thing is not found.
+
+Any time that zero occurrences
+is a valid option,
+
+there is an alternative empty rule.
+
+The keyword %empty
+could actually be omitted,
+
+but it is best to write code
+that documents the “why” –
+
+as we have discussed in a previous video.
+
+If you need a certain token in
+the beginning of the sequence,
+
+you can put it in the place
+of the percent-empty keyword.
+
+Any time the expression "or more"
+is found in your grammar,
+
+you need recursion.
+
+In Bison, the preferred way
+to do recursion is left-recursion,
+
+where the rule begins with a reference
+to itself or to another rule.
+
+If recursion is present,
+
+there must also be an alternative
+rule that does not contain recursion.
+
+Let’s explore how this works.
+Take the products_opt rule for example.
+
+First, the parser attempts to parse one
+of the rules that does not contain recursion.
+
+In this case, it is
+the empty rule, rule 2.
+
+This rule matches. So, the stack
+is reduced using rule 2.
+
+Then, it attempts to parse
+one of the recursive rules.
+
+The stack already contains
+products_opt, so that part is good.
+
+Then, it checks whether
+the next token is a THING.
+
+The next token is a THING!
+So, the stack is reduced using rule 1.
+
+Then, it attempts to parse
+one of the recursive rules.
+
+The stack already contains
+products_opt, so that part is good.
+
+Then, it checks whether
+the next token is a THING.
+
+The next token is a THING!
+So, the stack is reduced using rule 1.
+
+Then, it attempts to parse
+one of the recursive rules.
+
+The stack already contains
+products_opt, so that part is good.
+
+Then, it checks whether
+the next token is a THING.
+
+The next token is not a THING!
+So, this target is complete,
+
+and parsing continues somewhere else.
+
+And that is the idea
+behind recursive rules.
+
+Recursive rules are needed
+in almost all grammars,
+
+so it is important to
+learn how they work.
+
+It is worth noting that –
+
+if you need a rule of zero
+or more delimited things,
+
+you actually cannot do that
+with just one non-terminal.
+
+You need two different
+non-terminals for that.
+
+Sometimes you need this
+kind of a helper non-terminal.
+
+So with all this information in mind,
+let’s get back to the code.
+
+There is the non-terminal
+for zero or more functions.
+
+Then there is the non-terminal
+for zero or more parameters,
+
+comma-delimited.
+
+Each parameter is just an identifier token.
+
+You can see how a helper non-terminal
+was needed to implement this pattern.
+
+Next, the statements.
+
+This includes alternative rules
+for all the seven types of statements –
+
+discussed earlier in this video.
+
+Because the compound statement may
+contain zero or more statements,
+
+we need a separate non-terminal
+to carry out the recursion.
+
+The variable declaration statement
+also includes recursion with a delimiter.
+
+Because it is not a zero-or-more situation:
+
+After the “var” keyword at least
+one variable declaration is required —
+
+just one non-terminal
+would suffice as shown here,
+
+but I created a separate non-terminal
+for the identifier declaration –
+
+so that the two rules,
+where a variable is either declared,
+
+or declared and also assigned to,
+do not need to be duplicated.
+
+This concludes the statements.
+Next we need to define the expression.
+
+Remember this graph showing
+all the different expressions?
+
+Good. Because this is not a 360° video,
+I cannot show it simultaneously with the code.
+
+You may notice these expressions are
+massively self-refential and recursive.
+
+But that’s all right!
+
+Making it all work is what the parser is for.
+
+In fact, why don’t we test and see –
+
+what Bison thinks of our grammar now,
+that it is finished.
+
+Oh no! It says there were manifold 
+shift-reduce conflicts in my grammar.
+
+What could it mean?
+
+Let’s study it.
+
+If we give the report-all option to Bison,
+
+it produces an output file
+that describes in detail –
+
+the entire state-machine
+generated by Bison.
+
+Let’s have a look!
+
+At the top of the file it
+tells me the relevant thing:
+
+the exact state numbers
+where conflicts were found.
+
+Then, comes the full list
+of rules in the grammar.
+
+This is followed by the list of terminals,
+and the list of nonterminals.
+
+After that, we get the state machine.
+
+Each state lists two or more
+of the following things:
+	
+The list of rules handled
+in this state.
+
+Then, the list of actions to perform
+depending the look-ahead token.
+
+For example, if an identifier
+token is encountered,
+
+the parser will shift
+and go to state 5.
+
+Then, possibly a default action,
+
+that takes place if the look-ahead
+token matches none of the choices.
+
+Finally, the list of actions taken –
+
+when the parser has just
+executed a reduce operation,
+
+and ends up in this state.
+
+Now, to find out what caused
+the shift-reduce conflicts.
+
+The first conflict was in state number 36.
+
+State 36 is… here.
+
+It seems to be parsing
+an expression here.
+
+On the left side, there is already
+one successfully parsed expression,
+
+and it is trying to figure out
+what to do with an operator token.
+
+And it seems that there are two options
+for every single one of the operators.
+
+For example, when it finds the plus token,
+it could shift, and go into state 60.
+
+But it could also reduce using rule 42!
+
+The brackets indicate that the parser
+chose to shift here rather than to reduce.
+
+In other words,
+
+while there were conflicts in my grammar,
+Bison chose a sensible approach,
+
+which is usually to shift.
+But shifting is not always the right option.
+
+The problem is that until this point,
+I did not specify operator precedence.
+
+It is important to specify which
+order things are handled.
+
+As you can see, this simple
+mathematical formula can be produce –
+
+very different results depending
+on the precedences of each operator.
+
+There is not only the precedence,
+but also the associativity.
+
+If multiple instances of the
+same operator are encountered,
+
+associativity determines which
+way the sequence is grouped:
+
+whether priority is given to the leftside part, or to the rightside part.
+
+In the C programming language,
+the operator precedences are well documented.
+
+There are fifteen precedence levels,
+
+some of them left-associative and
+some of them right-associative.
+
+GNU Bison actually makes it really
+easy to define precedences.
+
+It goes like this.
+
+Each line in this listing
+is a new precedence level.
+
+The least precedence is at top,
+and the highest precedence is at bottom.
+
+But there are some symbols that
+have a different precedence level –
+
+depending on the context.
+
+For example, minus can be binary operator,
+but it can also be a unary operator.
+
+These have different precedence levels.
+
+That’s when it is helpful –
+
+to specify the precedence levels
+manually rule-by-rule if necessary.
+
+Here we have just indicated,
+that the unary asterisk operator –
+
+has the exact same precedence
+as the unary ampersand operator.
+
+Let’s see what bison
+thinks of this grammar!
+
+Ah, cool! It compiled
+without a single conflict.
+
+Now, the lack of parser conflicts –
+
+is not always a sign that
+your grammar is well-designed.
+
+According to the grammar
+I just wrote, what is this?
+
+Is it a function call
+with three parameters?
+
+Or is it a function call
+with one parameter,
+
+that is a comma expression?
+
+We have no way of distinguishing
+between these two.
+
+In the grammar I wrote,
+there is no difference.
+
+The first thing I will do is
+remove the comma operator –
+
+and create a separate
+set of non-terminals –
+
+for different situations where the
+comma operator is explicitly allowed,
+
+such as function parameters,
+
+or contexts where it cannot be
+mixed up with other meanings.
+
+Now it is very easy to make mistakes
+while designing these changes.
+
+Suppose my input to the compiler
+contains this statement:
+
+var x equals 5, y, z equals 3, semicolon.
+
+It corresponds to this sequence
+of tokens shown on the screen.
+
+Here’s how I intended it to be parsed:
+
+A single statement,
+
+comprised of a single
+variable-definition statement.
+
+Three variables are defined,
+
+and two of those variables are
+initialized with an expression.
+
+However, because of a mistake
+I made in the grammar,
+
+this is how the compiler
+parses it instead:
+
+One variable is defined, that is
+initialized with a comma expression.
+
+The parsing of var_def1 must be changed –
+
+so that the comma operator
+is not permitted at all,
+
+in order to not conflict with the meaning
+that the comma has in variable declarations.
+Done.
+
+I also made a small change
+to the semantics of the grammar.
+
+The “var” keyword is now
+an expression, not a statement.
+
+Which means that new variables
+can be defined inside expressions,
+
+such as the while-loop.
+
+Now even though the grammar
+has been completed,
+
+at least for now,
+our compiler is far from complete.
+
+Indeed, when we try to compile our parser,
+we get some errors –
+
+that indicate there are still some
+important parts that are missing.
+
+It’s time to begin making
+this an actual C++ program.
+
+We start by adding
+some definitions for Bison –
+
+that control how it generates code.
+
+The first line instructs it
+to create a parser in C++ language –
+
+rather than in C language.
+
+You can look up the rest of those settings
+in the manual, if you are interested;
+
+they are not really
+the focus of this project,
+
+so I will skip over them for now.
+
+The important part here
+is “code requires”.
+
+This is where we put
+actual C++ code for definitions –
+
+that shape how the parser works.
+
+Definitions that the parser needs
+in order to be compilable.
+
+Definitions such as variable types.
+
+First, I am going to define
+some fundamental types.
+
+First, I know we are going
+need some identifiers.
+
+There are going to be three
+different types of identifiers:
+
+Functions, function parameters,
+and local variables.
+
+To record the information about
+an identifier, we need its type, its name,
+
+and we’re probably going to translate it
+into an index number for efficiency.
+
+To record the information
+about an expression, we need…
+
+Umm, what do we actually need?
+
+We need the operation that is
+performed in the expression, of course.
+
+For example, addition.
+
+And we need some parameters to the expression.
+These parameters are… expressions.
+
+In other words,
+an expression contains expressions.
+
+Yup, perfectly logical.
+
+So, the expression contains a type,
+and more expressions. Got it.
+
+But what if the expression is,
+say, a number constant?
+
+It needs a number value, of course.
+
+Same goes for identifiers
+and string constants.
+
+So, which kind of expressions do we need?
+
+Well, we already established
+the atom types:
+
+String constants, numeric constants,
+and identifiers. But what else?
+
+Well, we already established the add type.
+Then we have the negation type.
+
+It takes just one expression as a parameter,
+because it is a unary operator.
+
+We do not need a subtract type,
+
+because it can be synthesized from
+the combination of the other two.
+
+I am aiming for a
+really minimal model here –
+
+in order to make the videos shorter.
+
+Then we the compare-equals type.
+
+We do not actually need
+the logical negation type,
+
+because it can be synthesized from
+comparing the expression with zero.
+
+We do not need the not-equals type either,
+
+because it, too, can be
+synthesized from the equals-type.
+
+We do kind of need
+the logical OR operator.
+
+I have placed the Y expression
+in a different position here,
+
+to denote the fact that Y will
+only be evaluated if X evalutes zero.
+
+The logical AND operator
+follows the same logic.
+
+Here, Y will be evaluted
+only if X evaluates nonzero.
+
+The IF statement will also be synthesized
+as an AND type expression.
+
+The loop statement needs its own
+type of expression though.
+
+Then there is the comma operator.
+
+The comma operator has any
+number of parameters.
+
+All of them are evaluated,
+
+but only the result of the last
+parameter expression is kept;
+
+results of the other
+expressions are discarded.
+
+Now I could synthesize the comma operator –
+
+by using the combination of the AND operator
+and the addition operator,
+
+but this would be just silly,
+
+and it would make the compiler
+actually much harder to write,
+
+so I’m not going to do that.
+
+There will be a dedicated expression type
+for the comma operator.
+
+However, I will not create a special expression
+type for the ternary operator.
+
+While my language does support
+the ternary operator,
+
+it will be transparently converted –
+
+into this rather complex
+sequence of operations –
+
+that produces the exactly same outcome.
+
+All in the name of keeping
+the compiler simple.
+
+Trust me, this is simpler –
+
+than creating a dedicated
+expression type for it.
+
+Next, we have the
+pointer operations.
+
+Remember, I explained pointers
+at 2:30 in this video? Good.
+
+So there is an expression type
+for taking the address of something,
+
+and an expression type
+for dereferencing a pointer.
+
+For array indexing,
+
+I chose to do exactly the same that
+the C programming language does:
+
+An array indexing is the dereferencing
+of the sum of two expressions.
+
+So, a new expression type
+is not needed for this.
+
+Then, the assign operator.
+
+This obviously needs
+a separate expression type.
+
+How about the assign-and-modify operators,
+such as plus-equals?
+
+Nope, we don’t need
+a special type for those.
+
+They can be synthesized
+from components.
+
+However!
+
+Note that my synthesis
+duplicated the X expression.
+
+What if X is an expression
+that has side-effects?
+
+In that case, we need a different
+synthesis for the plus-equals operator,
+
+where we operate indirectly on X.
+
+The same goes with the
+pre-increment operator.
+
+We do not need a special
+expression type for it.
+
+If X has no side-effects,
+we synthesize this tree,
+
+and if X does have side-effects,
+we synthesize this tree instead.
+
+The post-increment operator
+is quite tricky.
+
+If the target expression
+has side-effects,
+
+two different temporary variables
+will need to be synthesized –
+
+to deal with the operation.
+
+Let’s recap.
+
+We need the binary addition,
+the unary negation,
+
+the logical equality test,
+the logical OR and AND expressions,
+
+the loop expression,
+the pointer handling expressions,
+
+the assign expression
+and the comma expression.
+
+We also need a function-call expression,
+and a function-return expression.
+
+You may be wondering why I did
+not create a statement type.
+
+The answer is simple:
+It is not really needed.
+
+The program becomes simpler
+when everything is an expression.
+
+Loops, conditions, function calls,
+even function returns.
+
+The compount statement
+is a comma-expression.
+
+When I make programming videos,
+
+I spend a lot of time in trying to
+concise my design as much as possible.
+
+And I mean a lot of time, like months.
+
+Every line that I type on video takes time,
+
+and I do not want
+to waste anyone’s time.
+
+So I make sure my design does
+not have too much fluff in it.
+
+[music]
+
+Finally we have one more atom type.
+It is the function.
+
+Functions have a name,
+and they have code.
+
+They also have a number
+of local variables –
+
+and a number of
+function parameters.
+
+And that finishes
+the fundamental types.
+
+Next, we are getting closer
+to the actual parsing phase.
+
+At the core of the parser is “context”.
+
+Nearly all compilers need
+some kind of context –
+
+while they are parsing the code.
+
+For example, the compiler
+might need to tell –
+
+whether an identifier has
+already been defined or not.
+
+At some point in the code,
+it has not yet been defined,
+
+and at some later point,
+it has been defined.
+
+Identifiers may also change meaning
+depending how they are defined.
+
+The role of the context is
+to make all this happen.
+
+My parser context deals
+with three things:
+
+The list of identifiers,
+
+the list of functions
+that have been compiled,
+
+and the function that is
+currently being compiled.
+
+The list of identifiers
+forms a stack called “scopes”.
+
+The concept of scope defines
+the lifetime of the knowledge –
+
+about an identifier.
+
+The convenience ++operator
+creates a new scope,
+
+and the --operator
+destroys the current scope.
+
+I could have named these
+differently of course,
+
+but I chose this syntax
+for convenience.
+
+The “define” function
+inserts the variable name –
+
+and its associated information
+into the current scope.
+
+The “use” function
+searches all scopes,
+
+latest first, for the
+supplied identifier name,
+
+and returns the associated
+information if found.
+
+Here are some utility functions –
+
+for defining various different
+types of identifiers:
+
+Variables, functions, parameters,
+and temporary variables.
+
+Now.
+
+So far the parser has
+only concentrated on reading input.
+
+But it has produced absolutely nothing.
+
+A parser must produce something,
+or otherwise it’s not very useful.
+
+Suppose we are creating a parser for configuration files that look like this.
+
+The files contain sections, and in those sections there are integer settings.
+
+This is how the parser could look like.
+
+The configuration file
+contains zero or more sections.
+
+Each section begins with an
+identifier in square brackets,
+
+and is followed by
+zero or more settings.
+
+Each setting is an identifier,
+
+followed by the equals sign,
+followed by an integer constant.
+
+The way you make things happen,
+as things are parsed,
+
+is by adding semantic actions.
+
+Semantic actions are
+compound statements in C or C++ language,
+
+that are inserted usually, though
+not always, at the end of each rule.
+
+When Bison compiles your
+grammar into C or C++ code,
+
+it takes these compound blocks
+verbatim into the program,
+
+where they will be run –
+
+whenever this corresponding
+rule is matched.
+
+The dollar-and-number seen here is
+a macro that is translated by Bison.
+
+Each dollar-code refers to
+a particular element in the parse stack.
+
+Which takes us right into
+the next topic: Types.
+
+If a token carries
+any information with it,
+
+other than the token itself,
+it needs to have a type.
+
+For example,
+
+an “integer value” token probably
+has an integer value attached to it,
+
+and an “identifier” token
+probably has information –
+
+about the identifier
+attached to it.
+
+We will see later how
+this works in practice,
+
+but this is how you tell Bison
+about the types of tokens.
+
+Non-terminals also can have types.
+
+Here, the type of the “section”
+non-terminal is std::string.
+
+Essentially this is the
+return value of the non-terminal.
+
+Yeah, as in function calls.
+
+It’s not a function,
+but it returns a value.
+
+So. To make things
+a bit less tedious to type,
+
+I created these two utility macros –
+
+for specifying the way an expression
+is passed as a parameter:
+
+Moving the contents,
+or making a clone.
+
+In either case, an rvalue
+reference is produced.
+
+Now at the beginning
+of library parsing,
+
+a new scope is created,
+and at the end, the scope is destroyed.
+
+When a function is declared,
+
+the function name is first
+defined in the current scope,
+
+and then a new scope is created.
+
+When the function has been compiled,
+the function is added into the context,
+
+and the scope is destroyed.
+
+When parsing function parameters,
+
+the identifiers are added into
+the list of the function’s parameters.
+
+The trivial types of expressions are created –
+
+by invoking the expression constructor
+with the associated value.
+
+The parentheses in a parentheses expression
+do not need to be saved anywhere;
+
+their purpose is already fulfilled
+when we are at this stage of the parsing.
+
+We just take the expression itself.
+
+This is pretty mechanical,
+
+in each case we simply
+construct an expression
+
+with applicable parameters,
+
+in order to achieve the structures
+that were illustrated visually
+
+at 27:40 in this video.
+Commence music.
+
+[Wonky music]
+
+For the modifying addition operator,
+
+there were two possible different
+trees that could be generated,
+
+depending on whether the target
+expression has side-effects or not.
+
+The same goes for all the other
+read-modify-write operators –
+
+as discussed earlier.
+	
+This is where it really pays off –
+
+that I created all those silly macros
+and operators earlier in this file.
+
+The percent-equals operator
+may look confusing,
+
+but that’s just shorthand –
+
+for creating a new
+copy-a-to-b-expression.
+
+It is a member operator I wrote
+for the expression class.
+
+It was shown on screen
+at 31:52 in the video.
+
+This function, is_pure,
+
+answers the question whether the given expression has side-effects or not.
+
+A pure expression is one
+that does not have side-effects.
+
+[Unexpected music intermission]
+
+Time to check whether it compiles!
+
+So far so good.
+
+Now notice how GCC gives me
+a line number and column –
+
+for these error messages?
+
+There were some compilers
+in the early ages of computing –
+
+that were not that sophisticated.
+
+If there was an error
+in your program,
+
+they would just say “Syntax error”
+or something to that effect,
+
+with no qualifying information,
+
+and you would be left
+on your own devices –
+
+to figure out which exact
+part in your program –
+
+the compiler did not like.
+
+We are not in the 1980s,
+
+so let’s tell Bison to
+keep track of locations!
+
+We add the location information
+into the parser context.
+
+Now, we can also do
+meaningful error messages –
+
+when resolving and
+defining identifiers.
+
+One error message if a definition fails,
+and another message when a lookup fails.
+
+This brings us to the next very,
+very important topic:
+
+The scanner, also known as a lexer.
+
+Remember the compiler error
+from a few seconds ago?
+
+It complained that a function
+called yylex was not defined.
+
+A lexer, short for lexical analysis,
+
+is the subroutine or program
+that takes a character stream,
+
+such as file, and converts it
+into a stream of tokens.
+
+This process is called tokenization.
+
+There are countless ways
+to do tokenization.
+
+It is not very difficult
+to write one from scratch,
+
+but for efficient code and
+for faster production,
+
+it is wise to use an
+existing lexer generator.
+
+Flex is probably the best known
+program that generates lexers,
+
+but my current favorite is re2c.
+
+Using re2c is very simple —
+you are watching it right now,
+
+so I’ll just explain
+what is being accomplished.
+
+First, the keywords.
+
+I added “for” as a synonym
+for “while” just for the fun of it.
+
+Then, the multi-char operators
+such as the logical binary operators.
+
+Whitespace gets processed here, as well.
+
+You can notice re2c supports
+regular expressions.
+
+re2c basically converts
+all these expressions –
+
+into a deterministic
+finite automaton (DFA),
+
+and outputs it as
+very efficient C code.
+
+Like in Bison, you can –
+
+and essentially must attach semantic actions into each of these tokens.
+
+Here, the semantic actions tell which
+token to return from this function.
+
+The job of this function, yylex,
+is to return the next token after all.
+
+Whitespace does not produce tokens.
+
+Instead, we just rerun
+the tokenizer using recursion.
+
+A goto statement would work just as well,
+
+but I know you people hate those,
+so I used recursion instead.
+
+For anything that does not
+match these patterns,
+
+this final rule catches it.
+
+This includes single-character
+tokens like the equals-sign.
+
+Finally some definitions –
+
+to make re2c understand what
+kind of data we are dealing with.
+
+Oh, but wait.
+
+We totally forgot about identifiers
+and string and integer literals!
+
+This poses a problem.
+We need to return two things at once:
+
+Not only the token name,
+which is identifier for example,
+
+but also the attached information,
+which is the actual name of the identifier!
+
+How do we do that?
+
+Let’s take a look at the code
+generated by Bison for a moment.
+
+The return value of yylex()
+appears to be a symbol_type.
+
+This is a typedef
+that comes from Bison.
+
+Oooh… So there are dedicated functions
+for constructing the symbols,
+
+with the metadata to go
+with the symbol; gotcha!
+
+And what these functions do…
+is simply construct the symbol_type,
+
+using the token value as a parameter.
+
+That is good to know,
+
+that you can simply construct
+the symbol_type like that.
+
+So instead of returning tokens directly,
+we call this make-function.
+
+The make-function also
+receives the meta-data,
+
+such as the string literal,
+or the integer value.
+
+Now for the single-character
+tokens like the plus operator,
+
+we must construct
+the symbol_type directly.
+
+Now remember the part
+about context and locations?
+
+This is where we must keep track –
+
+which line and column
+we are in the source code file.
+
+Bison offers a handy
+interface for that.
+
+First, we call the step function.
+
+This saves the beginning
+of the next token.
+
+Then, at the end of each token,
+
+we call a function that updates
+the end position for the token.
+
+Advance the location
+by lines or columns.
+
+But wait… This is so
+much code repetition.
+
+I hate code repetition.
+
+Can’t we make this more clever?
+
+Turning stupid things into clever things
+is what I enjoy most about programming,
+
+so let’s add a lambda function.
+
+With the help of this lambda function,
+
+the semantic actions for these tokens
+become much shorter.
+
+Let’s see. 
+
+The other function that GCC
+was complaining about –
+
+was the error reporting function,
+so let’s do that now.
+
+Simply report the filename,
+the line number, the column range,
+
+and the error message.
+Like any other compiler does.
+
+Done.
+
+Now we only need the main program.
+
+You know, so that
+we can run this thing!
+
+In the main program,
+we do the following things:
+
+Read the source file into a string.
+
+Initialize the parser
+and its context.
+
+Parse the source file.
+
+Take the result from
+the parser’s context.
+
+Done! For now.
+
+Now let’s see how it works.
+
+Let’s try the parser
+with this tiny example.
+
+Well, that was a
+bit anticlimactic.
+
+But you know the UNIX idiom:
+“No news is good news!”
+
+To make sure the
+parser actually works,
+
+let’s try it with a source file
+that contains an actual error.
+
+Well look at that.
+It identified the typo correctly!
+
+How about syntax errors?
+
+It would seem to identify
+syntax errors correctly.
+
+Maybe the error reports could be better,
+but for now this is an ample result.
+
+It shows that it validates
+the grammar correctly.
+
+But we have no idea
+whether it parsed it properly.
+
+As in, whether it made these
+nice tree structures or not.
+
+Let’s add some code to visualize
+the structures it created.
+
+Hmm… This is all kinds of confusing.
+I *think* that’s correct,
+
+but we can probably do a bit better
+in the visualization department.
+
+I made a little tree visualization
+class for just that purpose.
+
+It is a bit longish
+and beside the point,
+
+so I won’t include
+its source in this video.
+
+You can find it in the
+video description though.
+
+The link takes you to a Github page
+where you can download it.
+
+And now, when we run it,
+here is what it generates.
+
+A little bit verbose,
+but it seems right to me.
+
+Hmm… This was the program
+that had an error in it.
+
+It looks like the parser stopped at the first error and bailed out!
+
+It compiled just two
+functions out of the four.
+
+You remember when we ran GCC,
+
+and it reported multiple errors
+in the source code?
+
+To support multiple errors,
+
+we must add error recover
+into the grammar.
+
+This is done by adding
+alternative rules –
+
+where a missing component is substituted with the “error” keyword.
+
+This rule is triggered –
+
+when the parser finds only the
+first tokens before the error,
+
+but it does not find
+what should follow after that.
+
+The easiest type of error rule –
+
+is recovery when a particular token,
+that is absolutely required,
+
+has not been found.
+
+For example, when a semicolon really
+is expected, but is not found.
+
+Writing a special rule for just this token,
+with an error option,
+
+allows the grammar to recover from
+missing token and just carry on.
+
+Careful attention must be paid to not create parser conflicts though.
+
+In this grammar I follow the principle –
+
+that an error-recovery alternative
+is added whenever possible.
+
+This is indicated in
+the naming convention:
+
+If the name of the non-terminal
+ends with number 1,
+
+an error will be produced
+if the rule is not matched.
+
+Consistent naming is the key
+to making maintainable rules.
+
+There are many popular conventions
+for naming rules in the grammar.
+
+I admit I am not very familiar –
+
+with the established culture
+of naming the non-terminals,
+
+so I created my own names.
+
+And now, when we run the parser,
+
+we can see it not only produces
+two error messages for this file –
+
+that has multiple errors,
+
+but from the parsing tree –
+
+we can see it actually
+processed the file to its end.
+
+[Begin puzzling music]
+
+Using code generators always
+brings forth a certain concern:
+
+What kind of code does
+the generator produce?
+
+This is the scanner function
+that is being passed to re2c.
+
+When re2c is run,
+it generates this code.
+
+I have done a bit of postprocessing on the code to reduce the number of lines,
+
+thereby making it a bit easier
+to read in a video,
+
+but basically the gist is
+that it creates a state machine.
+
+It begins by reading one character.
+
+Using a switch-case, it determines
+what to do based on that character.
+
+Say, if the letter was an “i” letter,
+it jumps to label yy26.
+
+At label yy26,
+it reads the next letter.
+
+If this letter is “f”,
+it jumps to label yy51.
+
+Otherwise, it jumps to label yy23.
+
+At label yy51,
+it reads the next letter.
+
+If this is an alphanumeric character,
+it jumps to label yy22.
+
+Otherwise it returns the token “if”,
+
+because it has read “i” and “f” that
+are not followed by alphanumeric characters.
+
+At label yy22,
+
+it increments the reading position
+and continues to label yy23,
+
+which was also reached when
+the second letter was not “f”.
+
+At label yy23,
+
+if the character is alphanumeric,
+it jumps back to label yy22.
+
+Otherwise, it returns
+the “identifier” token.
+
+There is hardly any possible way
+that this scanner could be made faster –
+
+even if you hand-wrote it from scratch.
+
+This is why I like re2c.
+
+It turns the mechanical task of
+character-per-character matching into one,
+
+where you can fully concentrate
+on expressing the desired outcome.
+
+This is what programming should be.
+
+And thus, we have completed the
+first step in creating the compiler:
+
+Parsing the source code files into structures
+that can be processed by the code.
+
+Stay tuned for the next part in the series,
+
+where we implement a number of algorithms
+to optimize and simplify this code!
+
+Have a most pleasant and fulfilling day.
+
+Do zobaczenia!
