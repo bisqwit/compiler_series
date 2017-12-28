@@ -1,0 +1,265 @@
+Hyvää iltaa!
+One of my previous works
+is a ROM hack, a fan translation of Chrono Trigger, a famous JRPG by Square.
+
+One of the features that sets my translation apart
+from nearly every other fan translation in the world
+is its ability to conjugate names.
+
+English is a language where most of the grammar
+is accomplished by adding small extra words,
+called prepositions.
+These prepositions have no meaning by themselves,
+but they express relationship with respect to another word.
+English prepositions include words like at, on, from, to, in, and so on.
+
+However, my ROM translation is to my native language,
+which is Finnish.
+Finnish language does not really use prepositions.
+Instead, it uses a principle called conjugation.
+
+In conjugation, the word itself is treated as a malleable
+object that changes shape depending on the situation.
+
+For example, the Finnish word for "daughter" is "tytär".
+However, to say "my daughter", we would say "tyttäreni".
+
+      Daughter     My daughter
+    = Tytär      = Tyttäreni
+
+      To walk      He/she walked
+    = Kävellä    = Käveli
+
+It is important to note, that this is not just tacking suffixes into the word.
+The word itself changes shape.
+
+The conjugation rules in Finnish are extremely complex,
+and Finnish is actually said to be one of the most difficult languages in the world to learn,
+at least if your native language is English.
+It is just _so_ different.
+
+I mean, look at this family tree.
+Finnish is not even in the same tree with English.
+Languages like Russian and Greek are closer to English than Finnish is.
+
+To be honest, there are other languages
+that have complex conjugation rules,
+but very few languages have as many
+grammatical cases as Finnish does.
+
+This poses significant challenges
+to computer software developers
+and localizers working with one of these languages.
+
+For example, in a video game, you would typically
+have somewhere a message that says something like:
+
+    You found 1 Horn!
+    You found 1 Feather!
+    You found 1 Mop!
+    You found 1 Star Sword!
+
+This is generally implemented by a pattern rule
+where there is a blank slot for the name of the item,
+but the rest of the sentence is fixed.
+
+    You found 1 ___________
+
+This approach works poorly in Finnish.
+
+If we translate the pattern literally,
+
+    Löysit 1 ___________
+
+we get the following sentences:
+
+    Löysit 1 Sarvi!
+    Löysit 1 Sulka!
+    Löysit 1 Moppi!
+    Löysit 1 Tähtimiekka!
+
+And this is just wrong.
+Anyone who knows Finnish can tell.
+In this kind of sentence, the item name
+should be conjugated in the accusative case.
+
+    Löysit 1 Sarven!
+    Löysit 1 Sulan!
+    Löysit 1 Mopin!
+    Löysit 1 Tähtimiekan!
+
+But the item names might come from one list
+that is used everywhere in the game,
+including the player's inventory.
+
+If the names were in accusative case in that list,
+the inventory would look totally wrong.
+
+The items should be listed in the nominative case,
+not in the accusative case.
+
+There are a couple of approaches
+often taken by translators
+to solve this problem.
+
+One way is to rewrite the sentence in such a way,
+that the nominative case does work.
+
+For example,
+
+    1 Sarvi löytyi!
+    1 Sulka löytyi!
+    1 Moppi löytyi!
+    1 Tähtimiekka löytyi!
+
+But this often requires changing the word order, which is not always possible.
+Also, it no longer says "you found this-and-that", but "this-and-that was found".
+The translation is no longer accurate.
+
+The other option is to add a scapegoat,
+a label that gets the conjugation treatment,
+leaving the template parameter untouched.
+
+    Löysit 1 esineen nimeltä Sarvi!
+    Löysit 1 esineen nimeltä Sulka!
+    Löysit 1 esineen nimeltä Moppi!
+    Löysit 1 esineen nimeltä Tähtimiekka!
+
+The scapegoat here is the word "esine", meaning "item".
+This is proper grammar, but again, the translation is not accurate.
+It now says "you found 1 item called a Mop", not "you found 1 Mop".
+
+This approach is commonly used in computer programs,
+where the scapegoats are words like "file", "folder", "user", "address" and so on.
+
+    "Copying $1 from $2 to $3"
+    "Kopioidaan tiedosto $1 kansiosta $2 kansioon $3"
+    Literally:
+    "Copying file $1 from folder $2 to folder $3"
+
+It leads into cumbersome language,
+but it is an acceptable compromise.
+
+But in an RPG where you can change
+the player characters' names,
+none of this will be work.
+
+In Chrono Trigger,
+before the game even starts,
+you will give a name for the main character.
+This name, and names of other characters you can name,
+are referred to everywhere in the game!
+
+   �iti: Oi, katsos vain! Olen n�hnyt sinut aiemmin
+   vain Luccan seurassa! Kuka on t�m� kaunis uusi yst�v�si?
+
+Using the cumbersome circumvential
+expressions would be inappropriate
+for the atmosphere of the game.
+
+In Chrono Trigger, I made a system
+that automatically conjugates
+any name that the player might enter.
+
+   nominative  accusative   partitive   adessive   essive    illative
+   ------------------------------------------------------------------
+   Crono       Cronon       Cronoa      Cronolla   Cronona   Cronoon
+   Marle       Marlen       Marlea      Marlella   Marlena   Marleen
+   Mikko       Mikon        Mikkoa      Mikolla    Mikkona   Mikkoon
+   Magus       Maguksen     Maguksena   Maguksella Maguksena Magukseen
+   Brow        Brow'n       Brow'ta     Brow'lle   Brow'na   Brow'hun
+   XYZ         XYZ:n        XYZ:na      XYZ:lla    XYZ:na    XYZ:aan
+
+It is not based on hardcoding
+the conjugated forms of names in a table,
+because the player can enter any name they want,
+and there are about ten different conjugations
+that are used throughout the game for every name.
+
+Instead, the conjugation rules were written
+in a special scripting language
+that I made for just that purpose.
+
+It is extremely limited and really
+only suited for rudimentary string operations.
+
+My insertor tool would interpret this script,
+and translate and compile it into assembler code
+and inject it into the game ROM.
+
+Thus, the game could correctly conjugate
+almost any name that the player might enter,
+in real time, on the SNES console,
+according to Finnish grammar rules.
+
+Later I reused this same system
+in Tales of Phantasia, too.
+
+And that's what I did 15 years ago.
+Man, time flies.
+
+Today, if I wanted to do this,
+the script would look very different.
+
+I would probably do something like this.
+
+The syntax is a sort of mix
+between C and JavaScript
+programming languages.
+
+Because a lot of you folks
+have never written a compiler,
+I thought it would be nice if we went
+through the process step by step,
+at least according to how I envision it.
+
+Mind you, I have never taken a course in compiler design, so what I do
+might end up being different
+than on your average university course.
+Or it might be just the same. Who knows!
+
+In any case, this will be a video *series*,
+in which we will go step-by-step
+through the process of creating a simple compiler
+for this made-up programming language,
+covering the whole spectrum
+from language design,
+through optimization using different
+intermediate representations,
+into assembler code generation,
+and hopefully then running it.
+
+The primary tools and languages that I will use
+will be C++, GNU Bison, and Re2c.
+
+Subscribe and click the bell icon
+to receive notifications
+whenever I publish new episodes!
+
+Now I am planning to use
+the 360-degree video technology
+that you can see in this video.
+
+You probably already realized it,
+but on a desktop computer
+you can drag the camera around
+by holding the left mouse button,
+and zoom using the scrolling wheel.
+
+Let me know in the video comments
+whether you like it or not.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
