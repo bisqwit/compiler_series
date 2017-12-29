@@ -11,7 +11,7 @@ Files: `ep0/`
 
 ## Episode 1: Parser and Lexer
 
-Video link: http://youtu.be/fixme  
+Video link: http://youtu.be/eF9qWbuQLuw
 Episode date: 2017-12-30  
 
 Files: `ep1/`
