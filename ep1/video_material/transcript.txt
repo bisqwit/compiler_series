@@ -1520,7 +1520,7 @@ to waste anyone’s time.
 So I make sure my design does
 not have too much fluff in it.
 
-[music]
+♫♫ Fluffy music ♫♫
 
 Finally we have one more atom type.
 It is the function.
@@ -1779,7 +1779,7 @@ that were illustrated visually
 at 27:40 in this video.
 Commence music.
 
-[Wonky music]
+♬♬ Wonky music ♬♬
 
 For the modifying addition operator,
 
@@ -1820,7 +1820,7 @@ answers the question whether the given expression has side-effects or not.
 A pure expression is one
 that does not have side-effects.
 
-[Unexpected music intermission]
+♪♪ Unexpected music intermission ♪♪
 
 Time to check whether it compiles!
 
@@ -2256,7 +2256,7 @@ but from the parsing tree –
 we can see it actually
 processed the file to its end.
 
-[Begin puzzling music]
+♫♫ Begin puzzling music ♫♫
 
 Using code generators always
 brings forth a certain concern:
