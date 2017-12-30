@@ -17,11 +17,17 @@ that supports xterm-256colors.
 The editor *does* run without that patch,
 but the colors will look wonky
 and the CPU speed controls will be broken.
+It will *not* run in Windows, or on any other operating system that is not DOS.
 
 I have not officially released the source code to this editor,
 though if you search hard enough, you will eventually find it.
 The reason is that it is not made to be used by *anyone*.
 It is pretty much the epitome of hacking until things work.
+
+It was written in pre-standard Borland C++ 3.1.
+I only wrote it because Joe would not run in DOS,
+and DOSBox was pretty much my only choice for video production when I began making videos,
+because of slow hardware where screen-recording was not an option.
 
 ## new.php
 
