@@ -1,0 +1,416 @@
+510	%skeleton "lalr1.cc"
+510	%define parser_class_name {conj_parser}
+510	%define api.token.constructor
+510^	%define api.value.type variant
+510	%define parse.assert
+510^	%define parse.error verbose
+510`1001	%locations`1:   // <--
+510	
+510	%code requires
+510	{
+515	#include <map>
+515^	#include <list>
+515^^	#include <vector>
+515^^^	#include <string>
+515^^^^	#include <iostream>
+515^^^^^	#include <algorithm>
+530	
+530	#define ENUM_IDENTIFIERS(o) \
+530	        o(undefined)                              /* undefined */ \
+530	        o(function)                               /* a pointer to given function */ \
+530	        o(parameter)                              /* one of the function params */ \
+530	        o(variable)                               /* a local variable */
+530`531	`1:#define o(n) n,
+530`531	enum class id_type {  ENUM_IDENTIFIERS(o) };
+531	#undef o
+520	
+520	struct identifier
+520	{
+525	    id_type type  = id_type::undefined;
+525`532	    std::size_t     index`0:;`1: = 0; // function#, parameter# within surrounding function, variable#
+525	    std::string     name;
+520	};
+550	
+551	#define ENUM_EXPRESSIONS(o) \
+551`555	        o(nop) o(string) o(number) o(ident)       /* atoms */`1: \
+555`558	        o(add) o(neg) o(eq)                       `1:/* transformation */ `01:\
+555`558	        o(cor) o(cand) o(loop)                    `1:/* logic. Loop is: while(param0) { param1..n } */ `01:\
+555`558	        o(addrof) o(deref)                        `1:/* pointer handling */ `01:\
+556`558	        o(fcall)                                  `1:/* function param0 call with param1..n */ `01:\
+555`558	        o(copy)                                   `1:/* assign: param1 <<- param0 */ `01:\
+555`558	        o(comma)                                  `1:/* a sequence of expressions */ `01:\
+557`558	        o(ret)                                    `1:/* return(param0) */
+550	
+553	#define o(n) n,
+552	enum class ex_type {  ENUM_EXPRESSIONS(o) };
+554	#undef o
+540	
+543	typedef std::list<struct expression> expr_vec;
+540	struct expression
+540	{
+542	    ex_type type;
+545`575	    identifier      ident{};`1:    // For ident
+545`575	    std::string     strvalue{};`1: // For string
+544`575	    long            numvalue=0;`1: // For number
+542	    expr_vec        params;
+576	    // For while() and if(), the first item is the condition and the rest are the contingent code
+576	    // For fcall, the first parameter is the variable to use as function
+574	
+574	    template<typename... T>
+574	    expression(ex_type t, T&&... args) : type(t), params{ std::forward<T>(args)... } {}
+570	
+570	    expression()                    : type(ex_type::nop) {}
+570^	    expression(const identifier& i) : type(ex_type::ident),  ident(i)            { }
+571^	    expression(identifier&& i)      : type(ex_type::ident),  ident(std::move(i)) { }
+572^	    expression(std::string&& s)     : type(ex_type::string), strvalue(std::move(s)) { }
+573^	    expression(long v)              : type(ex_type::number), numvalue(v) {}
+580	
+580	    bool is_pure() const;
+585	
+585	    expression operator%=(expression&& b) && { return expression(ex_type::copy, std::move(b), std::move(*this)); }
+540	};
+590	
+590	#define o(n) \
+590	template<typename... T> \
+590	inline expression e_##n(T&&... args) { return expression(ex_type::n, std::forward<T>(args)...); }
+590	ENUM_EXPRESSIONS(o)
+590	#undef o
+600	
+610	struct function
+610	{
+615	    std::string name;
+615	    expression  code;
+615	    unsigned num_vars = 0, num_params = 0;
+610	};
+703	
+703	struct lexcontext;
+520	
+510	}//%code requires
+500	
+701	%param { lexcontext& ctx }//%param
+710	
+710	%code
+710	{
+720	
+730	struct lexcontext
+730	{
+1005	    const char* cursor;
+1005	    yy::location loc;
+760	    std::vector<std::map<std::string, identifier>> scopes;
+750	    std::vector<function> func_list;
+795	    unsigned tempcounter = 0;
+750	    function fun;
+735	public:
+740	    const identifier& define(const std::string& name, identifier&& f)
+740	    {
+770	        auto r = scopes.back().emplace(name, std::move(f));
+1010	        if(!r.second) throw yy::conj_parser::syntax_error(loc, "Duplicate definition <"+name+">");
+770	        return r.first->second;
+740	    }
+790	    expression def(const std::string& name)     { return define(name, identifier{id_type::variable,  fun.num_vars++,   name}); }
+790^	    expression defun(const std::string& name)   { return define(name, identifier{id_type::function,  func_list.size(), name}); }
+790^^	    expression defparm(const std::string& name) { return define(name, identifier{id_type::parameter, fun.num_params++, name}); }
+796	    expression temp()                           { return def("$I" + std::to_string(tempcounter++)); }
+740	    expression use(const std::string& name)
+740	    {
+780	        for(auto j = scopes.crbegin(); j != scopes.crend(); ++j)
+780	            if(auto i = j->find(name); i != j->end())
+780	                return i->second;
+1015	        throw yy::conj_parser::syntax_error(loc, "Undefined identifier <"+name+">");
+740	    }
+740	    void add_function(std::string&& name, expression&& code)
+740	    {
+755	        fun.code = e_comma(std::move(code), e_ret(0l)); // Add implicit "return 0;" at the end
+755	        fun.name = std::move(name);
+755	        func_list.push_back(std::move(fun));
+755	        fun = {};
+740	    }
+765	    void operator ++() { scopes.emplace_back(); } // Enter scope
+765^	    void operator --() { scopes.pop_back();     } // Exit scope
+730	};
+720	
+1020`1021	namespace yy { conj_parser::symbol_type yylex(lexcontext& ctx); }
+800	
+801	#define M(x) std::move(x)
+801	#define C(x) expression(x)
+800	
+710	}//%code
+700	
+12	%token             END 0
+10`21*	%token             RETURN WHILE IF VAR IDENTIFIER NUMCONST STRINGCONST
+21	%token             RETURN "return" WHILE "while" IF "if" VAR "var" IDENTIFIER NUMCONST STRINGCONST
+15`20*	%token             OR AND EQ NE PP MM PL_EQ MI_EQ
+20	%token             OR "||"  AND "&&"  EQ "=="  NE "!="  PP "++"  MM "--"  PL_EQ "+="  MI_EQ "-="
+200	%left  ','
+200^`201	%`0:left `1:right`01: '?' ':' '=' "+=" "-="
+200^^	%left  "||"
+200^^^	%left  "&&"
+200^^^^	%left  "==" "!="
+200^^^^^	%left  '+' '-'
+200^^^^^^	%left  '*'
+200^^^^^^^`202	%`0:left `1:right`01: '&' "++" "--"
+200^^^^^^^^	%left  '(' '['
+820	%type<long>        NUMCONST
+820`2050	%type<std::string> IDENTIFIER STRINGCONST`1: identifier1
+820`2050*	%type<expression>  expr exprs c_expr1 stmt var_defs var_def1 com_stmt
+2050	%type<expression>  expr expr1 exprs exprs1 c_expr1 p_expr1 stmt stmt1 var_defs var_def1 com_stmt
+10	%%
+10	
+100`810`2000`2001	library:      `3-9:                  `0-9:`1-9:{ ++ctx; } `0-9:functions`1-9: { --ctx; }`0-9:;
+101`103*	functions:    IDENTIFIER paramdecls ':' stmt
+103`815`2001`2042*	functions:    `2-9:                  `0-9:functions IDENTIFIER`1-9: { ctx.defun($2); ++ctx; }`0-9: paramdecls ':' stmt`1-9: { ctx.add_function(M($2), M($6)); --ctx; }
+2042	functions:                      functions identifier1 { ctx.defun($2); ++ctx; } paramdecls colon1 stmt1 { ctx.add_function(M($2), M($6)); --ctx; }
+102`2001	|             `1-9:                  `0-9:%empty;
+110`2001	paramdecls:   `1-9:                  `0-9:paramdecl | %empty;
+110^`825`2001`2043*	paramdecl:    `2-9:                  `0-9:paramdecl ',' IDENTIFIER`1-9:        { ctx.defparm($3); }
+2043	paramdecl:                      paramdecl ',' identifier1   { ctx.defparm($3); }
+110`825`2001`2043	|             `2-9:                  `0-9:IDENTIFIER`1-9:                  `1-2:    `1-9:{ ctx.defparm($1); }`0-9:;
+2030`2043	identifier1:        error{}   | IDENTIFIER                  `0:    `0-9:{ $$ = M($1); };
+2030	colon1:             error{}   | ':';
+2030^	semicolon1:         error{}   | ';';
+2030^^	cl_brace1:          error{}   | '}';
+2030^^^	cl_bracket1:        error{}   | ']';
+2030^^^^	cl_parens1:         error{}   | ')';
+2040`2049	stmt1:              error{}   | stmt                        `0:    `0-9:{ $$ = M($1); };
+2040^`2049	exprs1:             error{}   | exprs                       `0:    `0-9:{ $$ = M($1); };
+2040^^`2049	expr1:              error{}   | expr                        `0:    `0-9:{ $$ = M($1); };
+2040^^^`2049	p_expr1:            error{}   | '(' exprs1 cl_parens1       `0:    `0-9:{ $$ = M($2); };
+120`124*	stmt:         '{' stmts '}'
+124`905`2001`2032`2049	stmt:         `2-9:                  `0-9:com_stmt        `012:'}'`12:             `3-9: cl_brace1  `3:    `1-9:{ $$ = M($1); --ctx; }
+121`320*	|             "if"    '(' expr ')' stmt
+320`910`2001`2041`2049	|             `2-9:                  `0-9:"if"    `0-2:'(' exprs ')' stmt`3-9: p_expr1 stmt1`3:    `1-2:      { $$ = e_cand(M($3), M($5)); }`3-9:      { $$ = e_cand(M($2), M($3)); }
+121^`321*	|             "while" '(' expr ')' stmt
+321`910`911`2001`2041`2049	|             `3-9:                  `0-9:"while" `0-3:'(' exprs ')' stmt`4-9: p_expr1 stmt1`4:    `1:      { $$ = e_cand(M($3), M($5)); }`2-3:      { $$ = e_loop(M($3), M($5)); }`4-9:      { $$ = e_loop(M($2), M($3)); }
+122`322*	|             "return" expr   ';'
+322`911`2001`2031`2041`2049	|             `2-9:                  `0-9:"return" `0-3:exprs `4-9:exprs1`0-9: `012:';'`12:             `3-9: semicolon1 `34:    `1-9:{ $$ = e_ret(M($2));         }
+122^`323*	|             var_defs        ';'
+122^^`324*	|             expr            ';'
+324`915`2001`2031`2049	|             `2-9:                  `0-9:exprs           `012:';'`12:             `3-9: semicolon1 `3:    `1-9:{ $$ = M($1);        }
+122`915`2001`2049	|             `2-9:                  `0-9:';'`1-2:    `1-9:                         { }`0-9:;
+125`900`2001`2049	com_stmt:     `2-9:                  `0-9:'{'`1-2:    `1-9:                         { $$ = e_comma(); ++ctx; }
+125`900`2001`2049	|             `2-9:                  `0-9:com_stmt stmt`1-2:    `1-9:               { $$ = M($1); $$.params.push_back(M($2)); }`0-9:;
+130`918`2001`2049	var_defs:     `2-9:                  `0-9:"var"           var_def1`1-2:    `1-9:    { $$ = e_comma(M($2)); }
+130`918`2001`2049	|             `2-9:                  `0-9:var_defs    ',' var_def1`1-2:    `1-9:    { $$ = M($1); $$.params.push_back(M($3)); }`0-9:;
+135`328*	var_def1:     IDENTIFIER  '=' expr
+328`360`361*	var_def1:     IDENTIFIER  '=' c_expr1
+361`918`2001`2044`2049	var_def1:     `2-9:                  `0-9:`0-2:IDENTIFIER  '=' expr`12: `3-9:identifier1 '=' expr1`1-3:    `1-9:       { $$ = ctx.def($1) %= M($3); }
+135`918`2001`2044`2049	|             `2-9:                  `0-9:`0-2:IDENTIFIER`12: `3-9:identifier1`1-3:    `1-9:                 { $$ = ctx.def($1) %= 0l; }`0-9:;
+310`840`2001`2049	exprs:        `2-9:                  `0-9:var_defs`1-2:    `1-9:                    { $$ = M($1); }
+310`840`2001`2049	|             `2-9:                  `0-9:expr`1-2:    `1-9:                        { $$ = M($1); }
+310`840`2001`2049	|             `2-9:                  `0-9:expr    ',' c_expr1`1-2:    `1-9:         { $$ = e_comma(M($1)); $$.params.splice($$.params.end(), M($3.params)); }`0-9:;
+310`840`2001`2045`2049	c_expr1:      `2-9:                  `0-2:expr`12: `3-9:expr1`1-3:    `1-9:                       { $$ = e_comma(M($1)); }
+310`840`2001`2045`2049	|             `2-9:                  `0-9:c_expr1 ',' `0-2:expr`3-9:expr1`1-3:     `1-9:           { $$ = M($1); $$.params.push_back(M($3)); }`0-9:;
+140`830`2001`2049	expr:         `2-9:                  `0-9:NUMCONST`1-2:    `1-9:                    { $$ = $1;    }
+140`830`831`2001`2049	|             `3-9:                  `0-9:STRINGCONST`1-3:    `1-9:                 { $$ = `1:$1;    }`2-9:M($1); }
+140`830`831`2001`2049	|             `3-9:                  `0-9:IDENTIFIER`1-3:    `1-9:                  { $$ = `1:$1;    }`2-9:ctx.use($1);   };
+140`330*	|             '(' expr ')'
+330`835`836`2001`2034`2046`2049	|             `3-9:                  `0-9:'(' `0-4:exprs `5-9:exprs1`0123:')'`123:                   `4-9: cl_parens1       `45:    `1-9:{ $$ = `1:M($1); }`2-9:M($2); }
+140`331*	|             expr '[' expr ']'
+331`850`2001`2034`2046`2049	|             `2-9:                  `0-9:expr '[' `0-3:exprs `4-9:exprs1`012:']'`12:              `3-9: cl_bracket1 `34:    `1-9:{ $$ = e_deref(e_add(M($1), M($3))); }
+145`850`2001`2049	|             `2-9:                  `0-9:expr '(' ')'`12:    `1-9:                { $$ = e_fcall(M($1)); }
+145`332*	|             expr '(' expr ')'
+332`850`2001`2033`2049	|             `2-9:                  `0-9:expr '(' c_expr1 `012:')'`12:            `3-9:cl_parens1 `3:    `1-9:{ $$ = e_fcall(M($1)); $$.params.splice($$.params.end(), M($3.params)); }
+147`855`856`2001`2015`2049	|`4-9: expr '='  error {$$=M($1);} | `0123:             `3:                  `0-9:expr '='  expr`1-4:    `1-9:              { `1:$$ = e_copy( M($3), M($1) );`2-9:$$ = M($1) %= M($3);`1-9: }
+147^`855`2001`2015`2049	|`3-9: expr '+'  error {$$=M($1);} | `012:             `2:                  `0-9:expr '+'  expr`1-3:    `1-9:              { $$ = e_add( M($1), M($3)); }
+147^^`210`861`2001`2015`2049	|`4-9: expr '-'  error {$$=M($1);} | `0123:             `3:                  `0-9:expr '-'  expr`1-9:   %prec '+'`2-4:    `2-9:  { $$ = e_add( M($1), e_neg(M($3))); }
+150`920`922`2001`2015`2049	|`4-9: expr "+=" error {$$=M($1);} | `0123:             `3:                  `0-9:expr "+=" expr`1-4:    `1-9:              {`1: $$ = e_comma(M($$), M($1) %= e_add(C($1), M($3))); }`2-9: if(!$3.is_pure()) { $$ = ctx.temp() %= e_addrof(M($1)); $1 = e_deref($$.params.back()); }
+921`2001`2049	              `1-9:                  `01:    `0-9:                              $$ = e_comma(M($$), M($1) %= e_add(C($1), M($3))); }
+923`2001`2049	
+150^`925*	|             expr "-=" expr
+926^^^`2001`2016`2049	|`2-9: expr "-=" error {$$=M($1);} | `01:             `1:                  `0-9:expr "-=" expr`012:    `0-9:              { if(!$3.is_pure()) { $$ = ctx.temp() %= e_addrof(M($1)); $1 = e_deref($$.params.back()); }
+926^^^`2001`2049	              `1-9:                  `01:    `0-9:                              $$ = e_comma(M($$), M($1) %= e_add(C($1), e_neg(M($3)))); }
+926^^^`2001`2049	
+930vvvvvvvvvvvv`935*	|             "++" expr
+935^^^^^^`2001`2020`2049	`2-9:| "++" error {}               | `01:|             `1:                  `0-9:"++" expr`012:    `0-9:                   { if(!$2.is_pure()) { $$ = ctx.temp() %= e_addrof(M($2)); $2 = e_deref($$.params.back()); }
+935^^^^^^`2001`2049	              `1-9:                  `01:    `0-9:                              $$ = e_comma(M($$), M($2) %= e_add(C($2),  1l)); }
+935^^^^^^`2001`2049	
+930vvvvvvvvvvvv`936*	|             "--" expr        %prec "++"
+936^^^`2001`2021`2049	`2-9:| "--" error {}               | `01:|             `1:                  `0-9:"--" expr        %prec "++"`012:    `0-9: { if(!$2.is_pure()) { $$ = ctx.temp() %= e_addrof(M($2)); $2 = e_deref($$.params.back()); }
+936^^^`2001`2049	              `1-9:                  `01:    `0-9:                              $$ = e_comma(M($$), M($2) %= e_add(C($2), -1l)); }
+936^^^`2001`2049	
+930vvvvvvvvvvvv`940`942`2001`2049	|             `3-9:                  `0-9:expr "++"`1-3:    `1-9:                   { `1:auto i = ctx.temp(); $$ = e_comma(M($$), C(i) %= C($1), C($1) %= e_add(C($1), 1l), C(i)); }`2-9:if(!$1.is_pure()) { $$ = ctx.temp() %= e_addrof(M($1)); $1 = e_deref($$.params.back()); }
+941`942`2001`2049	              `2-9:                  `012:    `0-9:                              auto i = ctx.temp(); $$ = e_comma(M($$), C(i) %= C($1), C($1) %= e_add(C($1), `1-9: `0-9:1l), C(i)); }
+942`2001`2049	
+930vvvvvvvvvvvv`945*	|             expr "--"        %prec "++"
+946^^^`947`2001`2049	|             `2-9:                  `0-9:expr "--"        `0:          `1-9:%prec "++"`012:    `0-9: { if(!$1.is_pure()) { $$ = ctx.temp() %= e_addrof(M($1)); $1 = e_deref($$.params.back()); }
+946^^^`2001`2049	              `1-9:                  `01:    `0-9:                              auto i = ctx.temp(); $$ = e_comma(M($$), C(i) %= C($1), C($1) %= e_add(C($1), -1l), C(i)); }
+946^^^`2001`2049	
+155^^`857`2001`2010`2049	|`3-9: expr "||" error {$$=M($1);} | `012:             `2:                  `0-9:expr "||" expr`1-9:              `123:    `1-9:{ $$ = e_cor( M($1), M($3)); }
+155^^`857`2001`2010`2049	|`3-9: expr "&&" error {$$=M($1);} | `012:             `2:                  `0-9:expr "&&" expr`1-9:              `123:    `1-9:{ $$ = e_cand(M($1), M($3)); }
+155^^^^`857`2001`2010`2049	|`3-9: expr "==" error {$$=M($1);} | `012:             `2:                  `0-9:expr "==" expr`1-9:              `123:    `1-9:{ $$ = e_eq(  M($1), M($3)); }
+155^^^^`860`2001`2010`2049	|`3-9: expr "!=" error {$$=M($1);} | `012:             `2:                  `0-9:expr "!=" expr`1-9:   %prec "==" `123:    `1-9:{ $$ = e_eq(e_eq(M($1), M($3)), 0l); }
+160^`300*	|             expr ',' expr
+170^`865`2001`2022`2049	|`3-9: '&' error{}                 | `012:             `2:                  `0-9:'&' expr`1-9:                    `123:    `1-9:{ $$ = e_addrof(M($2)); }
+171^`220`865`2001`2022`2049	|`4-9: '*' error{}                 | `0123:             `3:                  `0-9:'*' expr`1-9:         %prec '&'`2-4:    `2-9:  { $$ = e_deref(M($2));  }
+171^^`220`865`2001`2022`2049	|`4-9: '-' error{}                 | `0123:             `3:                  `0-9:'-' expr`1-9:         %prec '&'`2-4:    `2-9:  { $$ = e_neg(M($2));    }
+171^^^`220`865`2001`2022`2049	|`4-9: '!' error{}                 | `0123:             `3:                  `0-9:'!' expr`1-9:         %prec '&'`2-4:    `2-9:  { $$ = e_eq(M($2), 0l); }
+175`931*	|             "++" expr
+175^`230`931*	|             "--" expr`1-9:        %prec "++"
+176^^`931*	|             expr "++"
+176^`240`931*	|             expr "--"`1-9:        %prec "++"
+175`951`2001`2023`2049	|`3-9: expr '?'  error {$$=M($1);} | `012:             `2:                  `0-9:expr '?' expr ':' expr`0:;`123:    `1-9:      { auto i = ctx.temp();
+951`2001`2049	              `1-9:                  `01:    `0-9:                              $$ = e_comma(e_cor(e_cand(M($1), e_comma(C(i) %= M($3), 1l)), C(i) %= M($5)), C(i)); }
+950	
+180	%%
+1000	
+1100	yy::conj_parser::symbol_type yy::yylex(lexcontext& ctx)
+1100	{
+1110`1181	`1:    const char* anchor = ctx.cursor;
+1210	    ctx.loc.step();
+1230`1231	    auto s = [&](auto func, auto&&... params) { `1:ctx.loc.columns(ctx.cursor - anchor);`1: return func(params..., ctx.loc);`01: };
+1110	%{ /* Begin re2c lexer */
+1180	re2c:yyfill:enable   = 0;
+1180	re2c:define:YYCTYPE  = "char";
+1180	re2c:define:YYCURSOR = "ctx.cursor";
+1120	
+1120	// Keywords:
+1120`1150`1200`1225`1232`1235	"return"                {`0:`1: return RETURN;`24: return conj_parser::make_RETURN();`3: ctx.loc.columns(ctx.cursor - anchor); return conj_parser::make_RETURN(ctx.loc);`5: return s(conj_parser::make_RETURN);`012354: }
+1120`1150`1200`1225`1232`1235	"while" | "for"         {`0:`1: return WHILE;`24: return conj_parser::make_WHILE();`3: ctx.loc.columns(ctx.cursor - anchor); return conj_parser::make_WHILE(ctx.loc);`5: return s(conj_parser::make_WHILE);`012345: }
+1120`1150`1200`1225`1232`1235	"var"                   {`0:`1: return VAR;`24: return conj_parser::make_VAR();`3: ctx.loc.columns(ctx.cursor - anchor); return conj_parser::make_VAR(ctx.loc);`5: return s(conj_parser::make_VAR);`012345: }
+1120`1150`1200`1225`1232`1235	"if"                    {`0:`1: return IF;`24: return conj_parser::make_IF();`3: ctx.loc.columns(ctx.cursor - anchor); return conj_parser::make_IF(ctx.loc);`5: return s(conj_parser::make_IF);`012345: }
+1190	
+1190	// Identifiers:
+1190`1191`1201`1236	[a-zA-Z_] [a-zA-Z_0-9]* {`0:`1: return IDENTIFIER  ... with std::string(anchor,   ctx.cursor);`2: return conj_parser::make_IDENTIFIER(std::string(anchor,   ctx.cursor));`3: return s(conj_parser::make_IDENTIFIER, std::string(anchor,ctx.cursor));`01234: }
+1190	
+1190	// String and integer literals:
+1190`1192`1202`1237	"\"" [^"]* "\""         {`0:`1: return STRINGCONST ... with std::string(anchor+1, ctx.cursor-1);`2: return conj_parser::make_STRINGCONST(std::string(anchor+1, ctx.cursor-1));`3: return s(conj_parser::make_STRINGCONST, std::string(anchor+1, ctx.cursor-1));`01234: }
+1190`1192`1202`1237	[0-9]+                  {`0:`1: return NUMCONST    ... with std::stol(std::string(anchor,ctx.cursor));`2: return conj_parser::make_NUMCONST(std::stol(std::string(anchor,ctx.cursor)));`3: return s(conj_parser::make_NUMCONST, std::stol(std::string(anchor,ctx.cursor)));`01234: }
+1140	
+1140	// Whitespace and comments:
+1140`1160`1203`1238	"\000"                  {`0:`1: return END;`2: return conj_parser::make_END();`3: return s(conj_parser::make_END);`01234: }
+1140`1165`1220	"\r\n" | [\r\n]         {`0:`1: return yylex(ctx);`2: ctx.loc.lines();   return yylex(ctx);`01234: }
+1140`1165`1220	"//" [^\r\n]*           {`0:`1: return yylex(ctx);`2:                    return yylex(ctx);`01234: }
+1140`1165`1220	[\t\v\b\f ]             {`0:`1: return yylex(ctx);`2: ctx.loc.columns(); return yylex(ctx);`01234: }
+1135	
+1135`1206	// Multi-char operators`1: and any other character (either an operator or an invalid symbol):
+1135`1155`1204`1239	"&&"                    {`0:`1: return AND;`2: return conj_parser::make_AND();`3: return s(conj_parser::make_AND);`01234: }
+1135^`1155`1204`1239	"||"                    {`0:`1: return OR;`2: return conj_parser::make_OR();`3: return s(conj_parser::make_OR);`01234: }
+1135^^`1155`1204`1239	"++"                    {`0:`1: return PP;`2: return conj_parser::make_PP();`3: return s(conj_parser::make_PP);`01234: }
+1135^^^`1155`1204`1239	"--"                    {`0:`1: return MM;`2: return conj_parser::make_MM();`3: return s(conj_parser::make_MM);`01234: }
+1135^^^^`1155`1204`1239	"!="                    {`0:`1: return NE;`2: return conj_parser::make_NE();`3: return s(conj_parser::make_NE);`01234: }
+1135^^^^^`1155`1204`1239	"=="                    {`0:`1: return EQ;`2: return conj_parser::make_EQ();`3: return s(conj_parser::make_EQ);`01234: }
+1135^^^^^^`1155`1204`1239	"+="                    {`0:`1: return PL_EQ;`2: return conj_parser::make_PL_EQ();`3: return s(conj_parser::make_PL_EQ);`01234: }
+1135^^^^^^^`1155`1204`1239	"-="                    {`0:`1: return MI_EQ;`2: return conj_parser::make_MI_EQ();`3: return s(conj_parser::make_MI_EQ);`01234: }
+1110`1170*	
+1170`1175`1205`1239	.                       {`0:`1: return ctx.cursor[-1]&0xFF;`2: return conj_parser::symbol_type(conj_parser::token_type(ctx.cursor[-1]&0xFF));`3: return s([](auto...s){return conj_parser::symbol_type(s...);}, conj_parser::token_type(ctx.cursor[-1]&0xFF));`01234: }`1234: // Return that character
+1110	%} /* End lexer */
+1100	}
+1100	
+1300	void yy::conj_parser::error(const location_type& l, const std::string& m)
+1300	{
+1310	    std::cerr << (l.begin.filename ? l.begin.filename->c_str() : "(undefined)");
+1310	    std::cerr << ':' << l.begin.line << ':' << l.begin.column << '-' << l.end.column << ": " << m << '\n';
+1300	}
+1405	
+1405	#include <fstream>
+970	
+971	// is_pure tells whether the expression is safe to duplicate,
+971	// or even delete if the return value is not used,
+971	// without changing the program semantics.
+970	bool expression::is_pure() const
+970	{
+975	    // if any parameter is not pure, the expression is not pure
+975	    for(const auto& e: params) if(!e.is_pure()) return false;
+980	    switch(type)
+980	    {
+985`987	        // Function calls are `0:not pure.`1:assumed to be not pure for now.
+985	        case ex_type::fcall: return false;
+986^^	        // Assigns are not pure.
+986^^	        case ex_type::copy:  return false;
+986^^^^	        // Returns and not pure either, because they do not evaluate into a value.
+986^^^^	        case ex_type::ret:   return false;
+986^^^^`988	        // Loops are not pure`0:.`1:, because they may be infinite,
+988	        // in which case deleting the loop would alter the program behavior.
+986^^^^	        case ex_type::loop:  return false;
+986^^^^	        // Anything else is pure
+986^^^^	        default:             return true;
+980	    }
+970	}
+1500	
+1540	std::string stringify(const expression& e, bool stmt);
+1540	std::string stringify_op(const expression& e, const char* sep, const char* delim, bool stmt = false, unsigned first=0, unsigned limit=~0u)
+1540	{
+1545	    std::string result(1, delim[0]);
+1550	    const char* fsep = "";
+1550	    for(const auto& p: e.params) { if(first) { --first; continue; }
+1550	                                   if(!limit--) break;
+1550	                                   result += fsep; fsep = sep; result += stringify(p, stmt); }
+1550	    if(stmt) result += sep;
+1545	    result += delim[1];
+1545	    return result;
+1540	}
+1500	std::string stringify(const expression& e, bool stmt = false)
+1500	{
+1565	    auto expect1 = [&]{ return e.params.empty() ? "?" : e.params.size()==1 ? stringify(e.params.front()) : stringify_op(e, "??", "()"); };
+1510	    switch(e.type)
+1510	    {
+1520	        // atoms
+1520	        case ex_type::nop    : return "";
+1520	        case ex_type::string : return "\"" + e.strvalue + "\"";
+1520	        case ex_type::number : return std::to_string(e.numvalue);
+1520`1571	        case ex_type::ident  : `0:return e.ident.name;`1:return "?FPVS"[(int)e.ident.type] + std::to_string(e.ident.index) + "\"" + e.ident.name + "\"";
+1530	        // binary & misc
+1530	        case ex_type::add    : return stringify_op(e, " + ",  "()");
+1530^	        case ex_type::eq     : return stringify_op(e, " == ", "()");
+1530^^	        case ex_type::cand   : return stringify_op(e, " && ", "()");
+1530^^^	        case ex_type::cor    : return stringify_op(e, " || ", "()");
+1530^^^^	        case ex_type::comma  : return stmt ? stringify_op(e, "; ", "{}", true) : stringify_op(e, ", ",  "()");
+1560	        // unary
+1560	        case ex_type::neg    : return "-(" + expect1() + ")";
+1560^	        case ex_type::deref  : return "*(" + expect1() + ")";
+1560^^	        case ex_type::addrof : return "&(" + expect1() + ")";
+1570	        // special
+1570	        case ex_type::copy   : return "(" + stringify(e.params.back()) + " = " + stringify(e.params.front()) + ")";
+1570	        case ex_type::fcall  : return "(" + (e.params.empty() ? "?" : stringify(e.params.front()))+")"+stringify_op(e,", ","()",false,1);
+1570	        case ex_type::loop   : return "while " + stringify(e.params.front()) + " " + stringify_op(e, "; ", "{}", true, 1);
+1570	        case ex_type::ret    : return "return " + expect1();
+1510	    }
+1510	    return "?";
+1500	}
+1575	static std::string stringify(const function& f)
+1575	{
+1578	    return stringify(f.code, true);
+1575	}
+1580	
+1590	#include "textbox.hh"
+1590	
+1580	static std::string stringify_tree(const function& f)
+1580	{
+1591	    textbox result;
+1592	    result.putbox(2,0, create_tree_graph(f.code, 132-2,
+1592	        [](const expression& e)
+1592	        {
+1593	            std::string p = stringify(e), k = p;
+1594	            switch(e.type)
+1594	            {
+1595	                #define o(n) case ex_type::n: k.assign(#n,sizeof(#n)-1); break;
+1595	                ENUM_EXPRESSIONS(o)
+1595	                #undef o
+1594	            }
+1593	            return e.params.empty() ? (k + ' ' + p) : std::move(k);
+1592	        },
+1592	        [](const expression& e) { return std::make_pair(e.params.cbegin(), e.params.cend()); },
+1592^	        [](const expression& e) { return e.params.size() >= 1; }, // whether simplified horizontal layout can be used
+1592^^	        [](const expression&  ) { return true; },                 // whether extremely simplified horiz layout can be used
+1592^^^	        [](const expression& e) { return e.type == ex_type::loop; }));
+1581`1591	    return "function " + f.name + ":\n" + stringify(f) + '\n'`1: + result.to_string()`01:;
+1580	}
+1400	
+1400	int main(int argc, char** argv)
+1400	{
+1410	    std::string filename = argv[1];
+1410	    std::ifstream f(filename);
+1410	    std::string buffer(std::istreambuf_iterator<char>(f), {});
+1410	
+1410	    lexcontext ctx;
+1410	    ctx.cursor = buffer.c_str();
+1410	    ctx.loc.begin.filename = &filename;
+1410	    ctx.loc.end.filename   = &filename;
+1410	
+1410	    yy::conj_parser parser(ctx);
+1410	    parser.parse();
+1410	    std::vector<function> func_list = std::move(ctx.func_list);
+1585	
+1585	    for(const auto& f: func_list) std::cerr << stringify_tree(f);
+1400	}
+	

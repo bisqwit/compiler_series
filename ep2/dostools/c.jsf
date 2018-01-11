@@ -1,0 +1,1378 @@
+# JOE syntax highlight file for C
+
+# A (deterministic) state machine which performs lexical analysis of C.
+# (This is the "assembly language" of syntax highlighting.  A separate
+# program could be used to convert a regular expression NFA syntax into this
+# format).
+
+# Each state begins with ':<name> <color-name>'
+# <color-name> is the color used for characters eaten by the state
+# (really a symbol for a user definable color).
+
+# The first state defined is the initial state.
+
+# Within a state, define transitions (jumps) to other states.  Each
+# jump has the form: <character-list> <target-state> [<option>s]
+
+# There are two ways to specify <character-list>s, either * for any
+# character not otherwise specified, or a literal list of characters within
+# quotes (ranges and escape sequences allows).  When the next character
+# matches any in the list, a jump to the target-state is taken and the
+# character is eaten (we advance to the next character of the file to be
+# colored).
+#
+# The * transition should be the first transition specified in the state.
+#
+# There are several options:
+#   noeat     	do not eat the character, instead feed it to the next state
+#             	(this tends to make the states smaller, but be careful: you
+#		can make infinite loops).
+#
+#   recolor=-N	Recolor the past N characters with the color of the
+#		target-state.  For example once /* is recognized as the
+#		start of C comment, you want to color the /* with the C
+#		comment color.
+#
+#   buffer    	start copying characters to a buffer, beginning with this
+#		one (it's ok, to not terminate buffering with a matching
+#		'strings' option- the buffer is limited to leading 19
+#		characters).
+#
+#   strings	A list of strings follows.  If the buffer matches any of the
+#		given strings, a jump to the target-state in the string list
+#		is taken instead of the normal jump.
+#
+#   istrings	Same as strings, but case is ignored.
+#
+#   The format of the string list is:
+#
+#      "string"   <target-state>
+#      "string"   <target-state>
+#      done
+#
+# Weirdness: only states have colors, not transitions.  This means that you
+# sometimes have to make dummy states with '* next-state noeat' just to get
+# a color specification.
+
+
+# Define no. sync lines
+# You can say:
+# -200     means 200 lines
+# -        means always start parsing from beginning of file when we lose sync
+#          if nothing is specified, the default is -50
+
+# Define colors
+#
+# bold inverse blink dim underline
+# white cyan magenta blue yellow green red black
+# bg_white bg_cyan bg_magenta bg_blue bg_yellow bg_green bg_red bg_black
+-3000
+
+# Blank characters are outputted in this colour
+=Background	fg_222 bg_000
+=Tab		fg_222 bg_001
+
+# Preprocessor code
+#=Preproc	underline fg_311
+#=PreprocKW	underline fg_533
+#=Preproc_cKW	underline fg_433
+#=Preproc_sym	underline fg_302
+=Preproc	          fg_333 dim underline
+=PreprocKW	          fg_445 dim underline
+=Preproc_cKW	          fg_445 dim underline
+=Preproc_sym	          fg_034 dim underline
+=Preproc_sym2	          fg_031 dim underline
+=Preproc_ident	          fg_333 dim underline
+=Preproc_string		  fg_115 dim underline
+=Preproc_stringContent	  fg_125 dim underline
+=Preproc_char		  fg_314 dim underline
+=Preproc_charContent	  fg_525 dim underline
+
+# Comments within preprocessor statements
+=PreprocComment	          fg_412 dim underline italic
+# Unknown preprocessor words
+=PreprocUnknown	underline fg_500 bg_543
+
+
+# OpenMP:
+=OpenMP	        underline fg_033
+=OpenMPkw	underline fg_253
+=OpenMPkw2	underline WHITE
+=OpenMPcomment  underline fg_413
+=OpenMPnonkw    underline fg_500 bg_543
+=OpenMP_space   underline fg_131
+# OpenACC:
+=OpenACC	underline fg_033
+=OpenACCkw	underline fg_244
+=OpenACCkw2	underline WHITE
+=OpenACCcomment underline fg_414
+=OpenACCnonkw   underline fg_500 bg_544
+=OpenACC_space  underline fg_132
+
+# Comments
+=Comment	fg_411 italic
+
+# Most operators () ? ~ . / : * / + - < >
+=Special	fg_033
+
+# More operators [] {} , ;
+=Special2	green
+
+=BisonDelim	fg_430
+=BisonKw	fg_442 italic
+=BisonComment	fg_411
+=BisonDollar	fg_443 dim
+=Re2cDelim	fg_430
+=Re2cEscape	   fg_202
+=Re2cRangeDelim	fg_024
+=Re2cRangeContent fg_035
+
+# The "::" operator
+=GlueColor	fg_232
+
+# Operators that have a "=" in them
+=AssignColor	fg_251
+
+# Numeric constants
+=Numeric 	fg_315
+# Errors in numeric constants
+=InvalidNumber	fg_500 bg_542
+# Numeric suffixes (U,L,F)
+=NumericSuffix  fg_415
+=BinaryNumeric	fg_312
+=StringSuffix   fg_024
+
+# String constants
+=String		   fg_024
+=StringContent	   fg_035
+=WString	   fg_021
+=WStringContent	   fg_052
+
+=RawString	   fg_134
+=RawStringContent  fg_345
+
+=WRawString	   fg_242
+=WRawStringContent fg_353
+# Char constants
+=Char		fg_021
+=CharContent	fg_044
+=WChar		fg_331
+=WCharContent	fg_552
+
+# When "\n" is met in a string
+=AbruptStringTermination YELLOW bg_100
+
+# Reserved words
+=Keyword 	WHITE
+
+# Builtin types
+=Type 		WHITE
+
+# STL keywords
+=STLkw		fg_333
+
+# All other identifiers
+=Identifier	fg_333
+
+=BisonIdent	fg_555 dim italic
+
+=Hardcoded	fg_000
+
+# All unrecognized content
+#=Mystery	fg_500 bg_542
+=Mystery	bg_000 fg_033
+=TrailingSpace  bg_002
+
+########################
+# The rules begin here.
+:newline Background
+	*		idle noeat
+	"#"		pre_hash recolor=-1
+	"\t"		newline_tab recolor=-1
+	" "	newline_space
+:newline_tab Tab
+	*		newline noeat
+:newline_space Background
+	*		newline noeat
+	"\n"		trailing_space recolor=-2
+
+:pre_hash PreprocKW
+	*		pre noeat
+:pre Preproc
+	*		preident recolor=-1 buffer
+	"/"		pre1_slash recolor=-1
+	" \t"		pre
+	"\n"		newline
+:preident PreprocUnknown
+	*		preproc	noeat strings
+	"define"	preproc_known
+	"elif"		preproc_known
+	"else"		preproc_known
+	"endif"		preproc_known
+	"error"		preproc_known
+	"if"		preproc_known
+	"ifdef"		preproc_known
+	"ifndef"	preproc_known
+	"include"	preproc_known
+	"include_next"	preproc_known
+	"line"		preproc_known
+	"pragma"	preproc_pragma
+	"undef"		preproc_known
+	"warning"	preproc_known
+done
+	"a-z$0-9A-Z_"	preident
+
+# Preprocessor directives that begin with an actual keyword
+:preproc_known PreprocKW
+	*		preproc noeat
+:preproc Preproc
+	*		preproc
+	"\t"		preproc_tab recolor=-1
+	" "		preproc_space
+	"\n"		newline
+	"a-z$A-Z_"	preproc_ident recolor=-1 buffer
+	"()?~"		preproc_special  recolor=-1
+	"[]{},;"	preproc_special2 recolor=-1
+	"-:!<>=+*%&|^"  preproc_special  recolor=-1
+	"/" 		pre2_slash   recolor=-1
+	"\""		pre2_string  recolor=-1
+	"'"		pre2_char    recolor=-1
+	"\\"		preproc_cont recolor=-1
+:preproc_tab Tab
+	*		preproc noeat
+:preproc_space Preproc
+	*		preproc noeat
+	"\n"		trailing_space recolor=-2
+:preproc_special Preproc_sym
+	*		preproc noeat
+:preproc_special2 Preproc_sym2
+	*		preproc noeat
+:preproc_cont Preproc_sym
+	*		preproc_cont
+	"\n"		preproc_newline
+:preproc_newline Background
+	*		preproc noeat
+	"\t"		preproc_newline_tab recolor=-1
+	" "		preproc_newline_space
+:preproc_newline_tab Tab
+	*		preproc_newline noeat
+:preproc_newline_space Preproc
+	*		preproc_newline noeat
+	"\n"		trailing_space recolor=-2
+:preproc_ident Preproc_ident
+	*		preproc noeat strings
+	"auto"		preproc_ident_known
+	"bool"          preproc_ident_known
+	"char"		preproc_ident_known
+	"char16_t"	preproc_ident_known
+	"char32_t"	preproc_ident_known
+	"wchar_t"	preproc_ident_known
+	"const"		preproc_ident_known
+	"constexpr"	preproc_ident_known
+	"decltype"	preproc_ident_known
+	"double"	preproc_ident_known
+	"enum"		preproc_ident_known
+	"extern"	preproc_ident_known
+	"float"		preproc_ident_known
+	"inline"	preproc_ident_known
+	"int"		preproc_ident_known
+	"long"		preproc_ident_known
+	"noexcept"	preproc_ident_known	#c++11
+	"thread_local"	preproc_ident_known	#c++11
+	"nullptr"	preproc_ident_known
+	"register"	preproc_ident_known
+	"short"		preproc_ident_known
+	"signed"	preproc_ident_known
+	"static"	preproc_ident_known
+	"struct"	preproc_ident_known
+	"typedef"	preproc_ident_known
+	"union"		preproc_ident_known
+	"unsigned"	preproc_ident_known
+	"void"		preproc_ident_known
+	"volatile"	preproc_ident_known
+	"break"		preproc_ident_known
+	"case"		preproc_ident_known
+	"continue"	preproc_ident_known
+	"default"	preproc_ident_known
+	"do"		preproc_ident_known
+	"else"		preproc_ident_known
+	"for"		preproc_ident_known
+	"goto"		preproc_ident_known
+	"if"		preproc_ident_known
+	"return"	preproc_ident_known
+	"sizeof"	preproc_ident_known
+	"switch"	preproc_ident_known
+	"while"		preproc_ident_known
+	"and"		preproc_ident_known   #c++
+	"and_eq"	preproc_ident_known   #c++
+	"bitand"	preproc_ident_known   #c++
+	"bitor"		preproc_ident_known   #c++
+	"catch"		preproc_ident_known   #c++
+	"compl"		preproc_ident_known   #c++
+	"delete"        preproc_ident_known   #c++
+	"explicit"	preproc_ident_known   #c++
+	"export"	preproc_ident_known   #c++
+	"false"		preproc_ident_known   #c++
+	"friend"        preproc_ident_known   #c++
+	"namespace"     preproc_ident_known   #c++
+	"new"           preproc_ident_known   #c++
+	"not"		preproc_ident_known   #c++
+	"not_eq"	preproc_ident_known   #c++
+	"operator"	preproc_ident_known   #c++
+	"or"		preproc_ident_known   #c++
+	"or_eq"		preproc_ident_known   #c++
+	"private"	preproc_ident_known   #c++
+	"protected"	preproc_ident_known   #c++
+	"public"	preproc_ident_known   #c++
+	"throw"		preproc_ident_known   #c++
+	"true"		preproc_ident_known   #c++
+	"try"		preproc_ident_known   #c++
+	"using"         preproc_ident_known   #c++
+	"virtual"	preproc_ident_known   #c++
+	"xor"		preproc_ident_known   #c++
+	"xor_eq"	preproc_ident_known   #c++
+done
+	"a-z$A-Z0-9_"	preproc_ident
+:preproc_ident_known Preproc_cKW
+	*		preproc noeat
+
+:pre2_slash Preproc_sym
+	*		preproc recolor=-1
+	"*"		pre2_comment		recolor=-2
+	"/"		pre2_line_comment	recolor=-2
+:pre2_comment PreprocComment
+	*		pre2_comment
+	"*"		pre2_comment_maybe_end
+:pre2_comment_maybe_end PreprocComment
+	*		pre2_comment
+	"/"		preproc
+	"*"		pre2_comment_maybe_end
+:pre2_line_comment PreprocComment
+	*		pre2_line_comment
+	"\\"		pre2_line_comment_escape
+	"\n"		newline
+:pre2_line_comment_escape PreprocComment
+	*		pre2_line_comment
+
+
+:pre2_string Preproc_string
+	*		pre2_stringcontent noeat
+:pre2_stringend Preproc_string
+	*		preproc noeat
+:pre2_stringcontent Preproc_stringContent
+	*		pre2_stringcontent
+	"\""		pre2_stringend recolor=-1
+	"\\"		pre2_string_escape
+:pre2_string_escape Preproc_string
+	*		pre2_stringcontent
+
+:pre2_char Preproc_char
+	*		pre2_charcontent noeat
+:pre2_charend Preproc_char
+	*		preproc noeat
+:pre2_charcontent Preproc_charContent
+	*		pre2_charcontent
+	"'"		pre2_charend recolor=-1
+	"\\"		pre2_char_escape
+:pre2_char_escape Preproc_char
+	*		pre2_charcontent
+
+# Preprocessor directives that just begin with #, no keyword
+:pre1_slash PreprocUnknown
+	*		pre recolor=-1
+	"*"		pre1_comment		recolor=-2
+	"/"		pre1_line_comment	recolor=-2
+:pre1_comment PreprocComment
+	*		pre1_comment
+	" "		pre1_comment_space
+	"\t"		pre1_comment_tab recolor=-1
+	"*"		pre1_comment_maybe_end
+:pre1_comment_space PreprocComment
+	*		pre1_comment noeat
+	"\n"		pre1_comment_trailing_space recolor=-2
+:pre1_comment_tab Tab
+	*		pre1_comment noeat
+:pre1_comment_trailing_space TrailingSpace
+	*		pre1_comment noeat
+:pre1_comment_maybe_end PreprocComment
+	*		pre1_comment
+	"/"		pre
+	"*"		pre1_comment_maybe_end
+:pre1_line_comment PreprocComment
+	*		pre1_line_comment
+	"\\"		pre1_line_comment_escape
+	"\n"		newline
+:pre1_line_comment_escape PreprocComment
+	*		pre1_line_comment
+
+
+# Special care about OpenMP #pragma constructs
+:preproc_pragma PreprocKW
+	*		preproc_pragma0 noeat
+:preproc_pragma0 Preproc
+	*		preproc noeat
+	" "		preproc_pragma0
+	"o"		openmp1
+	"a"		openacc1
+
+# OPENMP SECTION
+:openmp1 Preproc
+	*		preproc noeat
+	"m"		openmp2
+:openmp2 Preproc
+	*		preproc noeat
+	"p"		openmp3
+:openmp3 Preproc
+	*		preproc noeat
+	" "		openmp_keyword_known recolor=-12
+:openmp OpenMP
+	*		openmp
+	" \t"	openmp_space recolor=-1
+	"("		openmp_parens
+	"\\"		openmp_cont
+	"a-z_"		openmp_keyword recolor=-1 buffer
+	"/"		openmp_slash
+	"\n"		newline
+:openmp_space OpenMP_space
+	*		openmp noeat
+	"\n"		trailing_space recolor=-2
+:openmp_slash OpenMP
+	*		openmp
+	"*"		openmp_comment recolor=-2
+	"/"		openmp_line_comment recolor=-2
+:openmp_comment OpenMPcomment
+	*		openmp_comment
+	"*"		openmp_comment_maybe_end
+:openmp_comment_maybe_end OpenMPcomment
+	*		openmp_comment
+	"*"		openmp_comment_maybe_end
+	"/"		openmp
+:openmp_line_comment OpenMPcomment
+	*		openmp_line_comment
+	"\\"		openmp_line_comment_escape
+	"\n"		newline
+:openmp_line_comment_escape OpenMPcomment
+	*		openmp_line_comment
+
+:openmp_parens OpenMP
+	*		openmp_parens
+	"\\"		openmp_parens_cont
+	"/"		openmp_parens_slash
+	")"		openmp
+	"\n"		newline
+:openmp_cont OpenMP
+	*		openmp
+:openmp_parens_cont OpenMP
+	*		openmp_parens
+:openmp_parens_slash OpenMP
+	*		openmp_parens noeat
+	"*"		openmp_parens_comment recolor=-2
+:openmp_parens_comment OpenMPcomment
+	*		openmp_parens_comment
+	"*"		openmp_parens_comment_maybe_end
+:openmp_parens_comment_maybe_end OpenMPcomment
+	*		openmp_parens_comment
+	"*"		openmp_parens_comment_maybe_end
+	"/"		openmp_parens
+
+:openmp_keyword OpenMPnonkw
+	*		openmp noeat strings
+	"auto"		openmp_keyword_known_end_parens
+	"atomic"	openmp_keyword_known2
+	"barrier"	openmp_keyword_known2
+	"cancel"	openmp_keyword_known2
+	"cancellation"	openmp_keyword_known
+	"copyin"	openmp_keyword_known
+	"collapse"	openmp_keyword_known
+	"copyin"	openmp_keyword_known
+	"copyprivate"	openmp_keyword_known
+	"critical"	openmp_keyword_known2
+	"declare"	openmp_keyword_known2
+	"default"	openmp_keyword_known_do_parens
+	"distribute"	openmp_keyword_known2
+	"dist_schedule"	openmp_keyword_known_do_parens
+	"dynamic"	openmp_keyword_known_end_parens
+	"firstprivate"	openmp_keyword_known
+	"for"		openmp_keyword_known2
+	"flush"		openmp_keyword_known2
+	"guided"	openmp_keyword_known_end_parens
+	"if"		openmp_keyword_known
+	"lastprivate"	openmp_keyword_known
+	"map"		openmp_keyword_known_end_parens
+	"master"	openmp_keyword_known2
+	"nowait"	openmp_keyword_known
+	"none"		openmp_keyword_known_end_parens
+	"num_threads"	openmp_keyword_known
+	"ordered"	openmp_keyword_known2
+	"parallel"	openmp_keyword_known2
+	"private"	openmp_keyword_known_end_parens
+	"linear"	openmp_keyword_known_end_parens
+	"point"		openmp_keyword_known
+	"simd"		openmp_keyword_known2
+	"simdlen"	openmp_keyword_known_end_parens
+	"reduction"	openmp_keyword_known
+	"initializer"	openmp_keyword_known
+	"runtime"	openmp_keyword_known_end_parens
+	"schedule"	openmp_keyword_known_do_parens
+	"section"	openmp_keyword_known2
+	"sections"	openmp_keyword_known2
+	"shared"	openmp_keyword_known_end_parens
+	"single"	openmp_keyword_known2
+	"static"	openmp_keyword_known_end_parens
+	"task"		openmp_keyword_known2
+	"taskyield"	openmp_keyword_known
+	"taskgroup"	openmp_keyword_known
+	"taskwait"	openmp_keyword_known
+	"threadprivate"	openmp_keyword_known
+	"untied"	openmp_keyword_known
+	"target"	openmp_keyword_known2
+	"teams"		openmp_keyword_known2
+	"data"		openmp_keyword_known2 #target data
+	"update"	openmp_keyword_known2 #target update
+	"end"		openmp_keyword_known2 #end declare...
+	"num_teams"	openmp_keyword_known_end_parens
+	"thread_limit"	openmp_keyword_known_end_parens
+	"from"		openmp_keyword_known_end_parens
+	"to"		openmp_keyword_known_end_parens
+	"tofrom"	openmp_keyword_known_end_parens
+	"alloc"		openmp_keyword_known_end_parens
+	"proc_bind"	openmp_keyword_known_end_parens
+	"spread"	openmp_keyword_known
+	"close"		openmp_keyword_known
+	"final"		openmp_keyword_known
+	"mergeable"	openmp_keyword_known
+	"capture"	openmp_keyword_known
+	"read"		openmp_keyword_known
+	"update"	openmp_keyword_known
+	"write"		openmp_keyword_known
+done
+	"a-z0-9A-Z_"	openmp_keyword
+:openmp_keyword_known OpenMPkw
+	*		openmp noeat
+:openmp_keyword_known2 OpenMPkw2
+	*		openmp noeat
+:openmp_keyword_known_do_parens OpenMPkw
+	*		openmp noeat
+	"("		openmp_keyword_known_do_parens1 recolor=-1
+:openmp_keyword_known_end_parens OpenMPkw
+	*		openmp_keyword_known_end_parens1 noeat
+:openmp_keyword_known_end_parens1 OpenMP
+	*		openmp noeat
+	" "		openmp_keyword_known_end_parens1
+	","		openmp_parens
+:openmp_keyword_known_do_parens1 OpenMP
+	*		openmp_parens noeat
+        "a-z_"          openmp_keyword recolor=-1 buffer
+
+
+# OPENACC SECTION
+
+:openacc1 Preproc
+	*		preproc noeat
+	"c"		openacc2
+:openacc2 Preproc
+	*		preproc noeat
+	"c"		openacc3
+:openacc3 Preproc
+	*		preproc noeat
+	" "		openacc_keyword_known recolor=-12
+:openacc OpenACC
+	*		openacc
+	" \t"	openacc_space recolor=-1
+	"("		openacc_parens
+	"\\"		openacc_cont
+	"a-z_"		openacc_keyword recolor=-1 buffer
+	"/"		openacc_slash
+	"\n"		newline
+:openacc_space OpenACC_space
+	*		openacc noeat
+	"\n"		trailing_space recolor=-2
+:openacc_slash OpenACC
+	*		openacc
+	"*"		openacc_comment recolor=-2
+	"/"		openacc_line_comment recolor=-2
+:openacc_comment OpenACCcomment
+	*		openacc_comment
+	"*"		openacc_comment_maybe_end
+:openacc_comment_maybe_end OpenACCcomment
+	*		openacc_comment
+	"*"		openacc_comment_maybe_end
+	"/"		openacc
+:openacc_line_comment OpenACCcomment
+	*		openacc_line_comment
+	"\\"		openacc_line_comment_escape
+	"\n"		newline
+:openacc_line_comment_escape OpenACCcomment
+	*		openacc_line_comment
+
+:openacc_parens OpenACC
+	*		openacc_parens
+	"\\"		openacc_parens_cont
+	"/"		openacc_parens_slash
+	")"		openacc
+	"\n"		newline
+:openacc_cont OpenACC
+	*		openacc
+:openacc_parens_cont OpenACC
+	*		openacc_parens
+:openacc_parens_slash OpenACC
+	*		openacc_parens noeat
+	"*"		openacc_parens_comment recolor=-2
+:openacc_parens_comment OpenACCcomment
+	*		openacc_parens_comment
+	"*"		openacc_parens_comment_maybe_end
+:openacc_parens_comment_maybe_end OpenACCcomment
+	*		openacc_parens_comment
+	"*"		openacc_parens_comment_maybe_end
+	"/"		openacc_parens
+
+:openacc_keyword OpenACCnonkw
+	*		openacc noeat strings
+	"parallel"	openacc_keyword_known2
+	"loop"		openacc_keyword_known2
+	"kernels"	openacc_keyword_known2
+	"routine"	openacc_keyword_known2
+	"data"		openacc_keyword_known2
+	"gang"		openacc_keyword_known
+	"worker"	openacc_keyword_known
+	"vector"	openacc_keyword_known
+	"copyin"	openacc_keyword_known_end_parens
+	"copyout"	openacc_keyword_known_end_parens
+done
+	"a-z0-9A-Z_"	openacc_keyword
+:openacc_keyword_known OpenACCkw
+	*		openacc noeat
+:openacc_keyword_known2 OpenACCkw2
+	*		openacc noeat
+:openacc_keyword_known_do_parens OpenACCkw
+	*		openacc noeat
+	"("		openacc_keyword_known_do_parens1 recolor=-1
+:openacc_keyword_known_end_parens OpenACCkw
+	*		openacc_keyword_known_end_parens1 noeat
+:openacc_keyword_known_end_parens1 OpenACC
+	*		openacc noeat
+	" "		openacc_keyword_known_end_parens1
+	","		openacc_parens
+:openacc_keyword_known_do_parens1 OpenACC
+	*		openacc_parens noeat
+        "a-z_"          openacc_keyword recolor=-1 buffer
+
+
+
+
+# All following states are for when we're not in a preprocessor line
+
+#:idle Special
+:idle Mystery
+	*		mystery		recolor=-1
+	"()?~"		special		recolor=-1
+	"]{,;"		special2	recolor=-1
+	":"		maybe_glue	recolor=-1
+	"!<>"		maybe_comp	recolor=-1
+	"="		maybe_comp_eq	recolor=-1
+	"-+*&|^"	maybe_op_assign recolor=-1
+	"%"		maybe_bison_kw	recolor=-1
+	"}"		maybe_bison_end recolor=-1 mark
+	"["		maybe_re2c_range recolor=-1 mark
+	"\t"		tab		recolor=-1
+	" "		space		recolor=-1
+	"/"		slash		recolor=-1
+	"0"		first_digit_0   recolor=-1
+	"1-9"		first_digit	recolor=-1
+	"."		period		recolor=-1
+	"\""		stringbegin	recolor=-1
+	"'"		charbegin	recolor=-1
+	"$"		bison_ident	recolor=-1
+	"a-zA-Z_"	ident		recolor=-1 buffer
+	"LU"		maybe_wide      recolor=-1 buffer
+	"u"		maybe_unicode	recolor=-1 buffer
+	"R"		maybe_rawstring	recolor=-1 buffer
+	"\\"		re2c_escape     recolor=-1
+	"\n"		newline
+:mystery Mystery
+	*		idle noeat
+
+:re2c_escape Re2cEscape
+	*		re2c_escape1
+:re2c_escape1 Re2cEscape
+	*		idle noeat
+
+:space Background
+        *               idle noeat
+        "\n"		trailing_space recolor=-2
+:tab Tab
+        *               idle noeat
+:trailing_space TrailingSpace
+	*		newline noeat
+
+# Delimiters
+:special Special
+	*		idle noeat
+:special2 Special2
+	*		idle noeat
+:period Special
+	*		idle noeat
+	":"		typoed_glue recolor=-2
+	"0-9"		float		recolor=-2
+:slash Special
+	*		idle noeat
+	"*"		comment		recolor=-2 # "/*"
+	"/"		line_comment	recolor=-2 # "//"
+	"="		was_op_assign	recolor=-2 # "/="
+
+# "::"
+:maybe_glue Special
+	*		idle noeat
+	"."		typoed_glue recolor=-2
+	":"		was_glue recolor=-2
+:was_glue GlueColor
+	*		idle noeat
+
+:typoed_glue InvalidNumber
+	*		idle noeat
+
+# "==" vs "="
+:maybe_comp_eq AssignColor
+	*		idle noeat
+	"="		was_comp recolor=-2
+# "<=", ">=", "==", "!="
+:maybe_comp Special
+	*		idle noeat
+	"="		was_comp recolor=-2
+:was_comp Special
+	*		idle noeat
+
+# "+=", "-=", "*=", "/=", "%=", "&=", "|="
+:maybe_op_assign Special
+	*		idle noeat
+	"="		was_op_assign recolor=-2
+:was_op_assign AssignColor
+	*		idle noeat
+
+
+# "%"
+:maybe_bison_kw Special
+	*		idle noeat
+	"="		was_op_assign recolor=-2
+	"%"		bison_delim   recolor=-2
+	"{}"		re2c_delim    recolor=-2
+	"a-z"		perc_ident1   recolor=-2 noeat
+:bison_delim BisonDelim
+	*		idle noeat
+:re2c_delim Re2cDelim
+	*		idle noeat
+:perc_ident1 BisonDelim
+	*		perc_ident recolor=-1 buffer
+:perc_ident Identifier
+	*		idle noeat strings
+	"code"		bison_kw
+	"define"	bison_kw
+	"empty"		bison_kw
+	"expect"	bison_kw
+	"left"		bison_kw
+	"locations"	bison_kw
+	"nonassoc"	bison_kw
+	"param"		bison_kw
+	"prec"		bison_kw
+	"requires"	bison_kw
+	"pure_parser"	bison_kw
+	"right"		bison_kw
+	"skeleton"	bison_kw
+	"start"		bison_kw
+	"token"		bison_kw
+	"type"		bison_kw
+	"union"		bison_kw
+done
+	"a-z_$A-Z0-9_"	perc_ident
+:bison_kw	BisonKw
+	*	idle noeat	
+	" \n\t"	bison_kw
+	"a-z"	perc_ident recolor=-1 buffer
+	"{"	bison_delim recolor=-1
+:bison_ident	BisonDollar
+	*	idle noeat
+	"$0-9"	bison_ident
+:maybe_bison_end	Special2
+	*	idle	noeat
+	"/"	maybe_bison_comment	markend
+:maybe_bison_comment	Special
+	*	idle	noeat
+	"/"	maybe2_bison_comment recolor=-2
+:maybe2_bison_comment	Comment
+	*	line_comment		noeat
+	"%"	is_bison_comment	recolormark noeat
+:is_bison_comment	BisonDelim
+	*	is_bison_comment1	recolor=-3
+:is_bison_comment1	BisonComment
+	*	line_comment	noeat
+
+:maybe_re2c_range	Special2
+	*	idle	noeat
+	"\\"	re2c_range recolor=-2 noeat
+	"^"	re2c_range recolor=-2 noeat
+	"a"	re2c_char_test1 buffer markend recolor=-1
+	"0"	re2c_char_test2        markend recolor=-1
+:re2c_range		Re2cRangeDelim
+	*	re2c_range_content recolor=-1
+:re2c_range_content	Re2cRangeContent
+	*	re2c_range_content
+	"\\"	re2c_range_escape
+	"]"	re2c_range_end recolor=-1
+:re2c_range_escape 	Re2cRangeContent
+	*	re2c_range_content
+:re2c_range_end		Re2cRangeDelim
+	*	idle noeat
+:re2c_char_test1	Identifier
+	*	ident noeat
+	"-"	re2c_range1 recolormark noeat
+:re2c_char_test2	Numeric
+	*	first_digit_0 noeat
+	"-"	re2c_range1 recolormark noeat
+:re2c_range1 		Re2cRangeDelim
+	*	re2c_range_content noeat recolor=-2
+
+# Comments
+:comment Comment
+	*		comment
+	" "		comment_space
+	"\t"		comment_tab recolor=-1
+	"*"		maybe_end_comment
+:comment_tab Tab
+	*		comment noeat
+:comment_space Comment
+	*		comment noeat
+	"\n"		comment_trailing_space recolor=-2
+:comment_trailing_space TrailingSpace
+	*		comment noeat
+:maybe_end_comment Comment
+	*		comment
+	"/"		idle
+	"*"		maybe_end_comment
+
+:line_comment Comment
+	*		line_comment
+	"\\"		line_comment_escape
+	"\n"		newline
+:line_comment_escape Comment
+	*		line_comment
+
+# Numeric constants
+:first_digit_0 Numeric
+	*		first_digit	noeat
+	"xX"            hex_first
+	"bB"		binary_digit recolor=-2
+:first_digit Numeric
+	*		number_before_e noeat
+	
+
+:hex_first Numeric
+	*		end_number_suffix noeat recolor=-2
+	"0-9A-Fa-f'"	hex
+	"."		hexfloat
+:hex Numeric
+	*		end_int noeat
+	"0-9A-Fa-f'"	hex
+	"."		hexfloat
+	"pP"		epart
+:hexfloat Numeric
+	*		end_number_suffix noeat recolor=-2
+	"0-9A-Fa-f"	hexfloat
+	"pP"		epart
+:number_before_e Numeric
+	*		end_int noeat
+	"0-9'"		number_before_e
+	"."		float
+	"eE"            epart
+
+:binary_digit BinaryNumeric
+	*		end_int noeat
+	"01'"		binary_digit
+
+:float Numeric
+	*		end_float noeat
+	"eE"		epart
+	"0-9'"		float
+:epart Numeric
+	*		enum_first noeat
+	"-+"		enum_first
+:enum_first Numeric
+	*		end_number_suffix noeat recolor=-2
+	"0-9"		enum
+:enum Numeric
+	*		end_float noeat
+	"0-9"		enum
+:end_float NumericSuffix
+	*		end_number_suffix noeat
+	"_"		num_user_suffix noeat
+	"fFlL"		end_number_suffix #f, #l
+:end_int NumericSuffix
+	*		end_number_suffix noeat
+	"_"		num_user_suffix noeat
+	"uU"		int_suffix_u	#u
+	"lL"		int_suffix_l	#l
+:int_suffix_u NumericSuffix
+	*		end_number_suffix noeat
+	"lL"		int_suffix_ul	#ul
+:int_suffix_ul NumericSuffix
+	*		end_number_suffix noeat
+	"lL"		end_number_suffix #ull
+:int_suffix_l NumericSuffix
+	*		end_number_suffix noeat
+	"uU"		end_number_suffix  #lu
+	"lL"		int_suffix_ll	#ll
+:int_suffix_ll NumericSuffix
+	*		end_number_suffix noeat
+	"uU"		end_number_suffix #llu
+:end_number_suffix InvalidNumber
+	*		idle noeat
+	"a-z$A-Z_0-9"	end_number_suffix
+:num_user_suffix NumericSuffix
+	*		idle noeat
+	"a-z$A-Z_0-9"	num_user_suffix
+
+# Strings
+:stringbegin String
+	*		string noeat
+:stringend String
+	*		idle noeat
+	"_"		string_user_suffix noeat
+	"s"		string_suffix noeat
+:string_user_suffix	StringSuffix
+	*		idle noeat
+	"a-z$A-Z_0-9"	string_user_suffix
+:string_suffix StringSuffix
+	*		idle
+
+:string	StringContent
+	*		string
+	"\""		stringend recolor=-1
+	"\\"		string_escape
+	"\n"		invalid_string_char_flush recolor=-2
+:string_escape StringContent
+	*		string
+	"\n"		string
+	""		string_escape_ignore recolor=-1
+:string_escape_ignore Background
+	*		string_escape noeat
+
+:wstringbegin WString
+	*		wstring noeat
+:wstringend WString
+	*		idle noeat
+	"_"		string_user_suffix noeat
+
+:wstring	WStringContent
+	*		wstring
+	"\""		wstringend recolor=-1
+	"\\"		wstring_escape
+	"\n"		invalid_string_char_flush recolor=-2
+:wstring_escape WStringContent
+	*		wstring
+	"\n"		wstring
+	""		wstring_escape_ignore recolor=-1
+:wstring_escape_ignore Background
+	*		wstring_escape noeat
+
+
+:rawstringbegin RawString
+	*		rawstringend noeat
+	"("		rawstring
+:rawstring RawStringContent
+	*		rawstring
+	")"		maybe_rawstringend
+:maybe_rawstringend RawStringContent
+	*		rawstring
+	")"		maybe_rawstringend
+	"\""		rawstringend recolor=-2
+:rawstringend RawString
+	*		idle noeat
+	"_"		string_user_suffix noeat
+:wrawstringbegin WRawString
+	*		wrawstringend noeat
+	"("		wrawstring
+:wrawstring WRawStringContent
+	*		wrawstring
+	")"		maybe_wrawstringend
+:maybe_wrawstringend WRawStringContent
+	*		wrawstring
+	")"		maybe_wrawstringend
+	"\""		wrawstringend recolor=-2
+:wrawstringend WRawString
+	*		idle noeat
+
+# Chars
+:charbegin Char
+	*		char noeat
+:charend Char
+	*		idle noeat
+
+:char CharContent
+	*		char
+	"'"		charend recolor=-1
+	"\\"		char_escape
+	"\n"		invalid_string_char_flush recolor=-2
+:char_escape	CharContent
+	*		char
+	"\n"		char
+	""		char_escape_ignore recolor=-1
+:char_escape_ignore Background
+	*		char_escape noeat
+
+:wcharbegin WChar
+	*		wchar noeat
+:wcharend WChar
+	*		idle noeat
+:wchar WCharContent
+	*		wchar
+	"\\"		wchar_escape
+	"\n"		invalid_string_char_flush recolor=-2
+	"'"		wcharend recolor=-1
+:wchar_escape	WCharContent
+	*		wchar
+	"\n"		wchar
+	""		wchar_escape_ignore recolor=-1
+:wchar_escape_ignore Background
+	*		wchar_escape noeat
+
+
+:maybe_rawstring Identifier
+	*		ident noeat
+	"\""		rawstringbegin recolor=-2
+:maybe_wide Identifier
+	*               ident noeat
+	"'"		wcharbegin recolor=-2
+	"\""		wstringbegin recolor=-2
+	"R"		maybe_wider
+:maybe_wider Identifier
+	*		ident noeat
+	"\""		wrawstringbegin recolor=-3
+:maybe_unicode Identifier
+	*		ident noeat
+	"8"		maybe_unicode8
+	"R"		maybe_wider
+	"'"		wcharbegin recolor=-2
+	"\""		wstringbegin recolor=-2
+:maybe_unicode8 Identifier
+	# Only string constant support for u8, not char
+	*		ident noeat
+	"\""		stringbegin recolor=-3
+	"R"		maybe_unicode8r
+:maybe_unicode8r Identifier
+	# Only string constant support for u8, not char
+	*		ident noeat
+	"\""		rawstringbegin recolor=-4
+
+
+# This is if a "\n" is met inside a string or char constant.
+# It serves two purposes:
+#   Helps getting back in sync
+#   Minimizes terminal traffic when entering strings
+:invalid_string_char_flush AbruptStringTermination
+	*		newline noeat
+
+# Special identifiers
+:ident Identifier
+	*		idle noeat strings
+	"END" bisonident
+	"RETURN" bisonident
+	"WHILE" bisonident
+	"OR" bisonident
+	"AND" bisonident
+	"IF" bisonident
+	"VAR" bisonident
+	"EQ" bisonident
+	"NE" bisonident
+	"PP" bisonident
+	"MM" bisonident
+	"PL_EQ" bisonident
+	"MI_EQ" bisonident
+	"IDENTIFIER"	bisonident
+	"NUMCONST"	bisonident
+	"STRINGCONST"	bisonident
+	"error"		bisonident2
+	"library"	bisonident
+	"functions"	bisonident
+	"paramdecl"	bisonident
+	"paramdecls"	bisonident
+	"identifier1"	bisonident
+	"colon1"	bisonident
+	"semicolon1"	bisonident
+	"cl_brace1"	bisonident
+	"cl_bracket1"	bisonident
+	"cl_parens1"	bisonident
+	"stmt1"	bisonident
+	"stmt"	bisonident
+	"exprs1"	bisonident
+	"expr1"		bisonident
+	"p_expr1"	bisonident
+	"com_stmt"	bisonident
+	"var_defs"	bisonident
+	"var_def1"	bisonident
+	"exprs"		bisonident
+	"c_expr1"	bisonident
+	"expr"		bisonident
+	
+	"auto"		type
+	"bool"          type   #c++
+	"char"		type
+	"char16_t"	wchartype  #c++11
+	"char32_t"	wchartype  #c++11
+	"wchar_t"	wchartype  #c++11 (partially before)
+	"const"		type
+	"constexpr"	type   #c++11
+	"decltype"      type   #c++11
+	"double"	type
+	"enum"		type
+	"extern"	type
+	"float"		type
+	"inline"	type
+	"int"		type
+	"long"		type
+	"noexcept"	kw	#c++11
+	"nullptr"	first_digit # c++11
+	"register"	type
+	"short"		type
+	"signed"	type
+	"static"	type
+	"struct"	type
+	"typedef"	type
+	"union"		type
+	"unsigned"	type
+	"void"		type
+	"volatile"	type
+	"class"         type   #c++
+	"const_cast"	type   #c++
+	"dynamic_cast"	type   #c++
+	"mutable"	type   #c++
+	"reinterpret_cast" type   #c++
+	"static_cast"	type   #c++
+	"template"      type   #c++
+	"typeid"	type   #c++
+	"typename"      type   #c++
+	"wchar_t"       type   #c++
+	"thread_local"	type   #c++
+	"break"		kw
+	"case"		kw
+	"continue"	kw
+	"default"	kw
+	"do"		kw
+	"else"		kw
+	"for"		kw
+	"goto"		kw
+	"if"		kw
+	"return"	kw
+	"sizeof"	kw
+	"switch"	kw
+	"static_assert"	kw
+	"while"		kw
+	"and"		kw   #c++
+	"and_eq"	kw   #c++
+	"bitand"	kw   #c++
+	"bitor"		kw   #c++
+	"catch"		kw   #c++
+	"compl"		kw   #c++
+	"delete"        kw   #c++
+	"explicit"	kw   #c++
+	"export"	kw   #c++
+	"false"		kw   #c++
+	"friend"        kw   #c++
+	"namespace"     kw   #c++
+	"new"           kw   #c++
+	"not"		kw   #c++
+	"not_eq"	kw   #c++
+	"operator"	kw   #c++
+	"or"		kw   #c++
+	"or_eq"		kw   #c++
+	"private"	kw   #c++
+	"protected"	kw   #c++
+	"public"	kw   #c++
+	"this"		kw   #c++
+	"throw"		kw   #c++
+	"true"		kw   #c++
+	"try"		kw   #c++
+	"using"         kw   #c++
+	"virtual"	kw   #c++
+	"xor"		kw   #c++
+	"xor_eq"	kw   #c++
+	"alignas"	kw
+	"alignof"	kw
+        "accumulate"			   stlkw
+        "adjacent_difference"		   stlkw
+        "adjacent_find"			   stlkw
+        "advance"			   stlkw
+        "allocator"			   stlkw
+        "auto_ptr"			   stlkw
+        "array"				   stlkw
+        "back_insert_iterator"		   stlkw
+        "back_inserter"			   stlkw
+        "basic_string"			   stlkw
+        "binary_function"		   stlkw
+        "binary_negate"			   stlkw
+        "binary_search"			   stlkw
+        "bind1st"			   stlkw
+        "bind2nd"			   stlkw
+        "binder1st"			   stlkw
+        "binder2nd"			   stlkw
+        "bitset"			   stlkw
+        "complex"			   stlkw
+        "copy"				   stlkw
+        "copy_backward"			   stlkw
+        "count"				   stlkw
+        "count_if"			   stlkw
+        "deque"				   stlkw
+        "distance"			   stlkw
+        "distance_type"			   stlkw
+        "divides"			   stlkw
+        "equal"				   stlkw
+        "equal_range"			   stlkw
+        "equal_to"			   stlkw
+        "exception"			   stlkw
+        "fill"				   stlkw
+        "fill_n"			   stlkw
+        "find"				   stlkw
+        "find_end"			   stlkw
+        "find_first_of"			   stlkw
+        "find_if"			   stlkw
+        "for_each"			   stlkw
+        "front_insert_iterator"		   stlkw
+        "front_inserter"		   stlkw
+        "function"			   stlkw
+        "generate"			   stlkw
+        "generate_n"			   stlkw
+        "get_temporary_buffer"		   stlkw
+        "greater"			   stlkw
+        "greater_equal"			   stlkw
+        "includes"			   stlkw
+        "inner_product"			   stlkw
+        "inplace_merge"			   stlkw
+        "initializer_list"		   stlkw
+        "insert_iterator"		   stlkw
+        "inserter"			   stlkw
+        "istream_iterator"		   stlkw
+        "iter_swap"			   stlkw
+        "iterator_category"		   stlkw
+        "less"				   stlkw
+        "less_equal"			   stlkw
+        "lexicographical_compare"	   stlkw
+        "limits"			   stlkw
+        "list"				   stlkw
+        "logical_and"			   stlkw
+        "logical_not"			   stlkw
+        "logical_or"			   stlkw
+        "lower_bound"			   stlkw
+        "make_heap"			   stlkw
+        "map"				   stlkw
+        "max"				   stlkw
+        "max_element"			   stlkw
+        "merge"				   stlkw
+        "min"				   stlkw
+        "min_element"			   stlkw
+        "minus"				   stlkw
+        "mismatch"			   stlkw
+        "modulus"			   stlkw
+        "move"				   stlkw
+        "multimap"			   stlkw
+        "multiset"			   stlkw
+        "negate"			   stlkw
+        "next_permutation"		   stlkw
+        "not1"				   stlkw
+        "not2"				   stlkw
+        "not_equal_to"			   stlkw
+        "nth_element"			   stlkw
+        "numeric_limits"		   stlkw
+        "ostream_iterator"		   stlkw
+        "pair"				   stlkw
+        "partial_sort"			   stlkw
+        "partial_sort_copy"		   stlkw
+        "partial_sum"			   stlkw
+        "partition"			   stlkw
+        "permutation"			   stlkw
+        "plus"				   stlkw
+        "pointer_to_binary_function"	   stlkw
+        "pointer_to_unary_function"	   stlkw
+        "pop_heap"			   stlkw
+        "prev_permutation"		   stlkw
+        "priority_queue"		   stlkw
+        "ptr_fun"			   stlkw
+        "push_heap"			   stlkw
+        "queue"				   stlkw
+        "random_shuffle"		   stlkw
+        "raw_storage_iterator"		   stlkw
+        "remove"			   stlkw
+        "remove_copy"			   stlkw
+        "remove_copy_if"		   stlkw
+        "remove_if"			   stlkw
+        "replace"			   stlkw
+        "replace_copy"			   stlkw
+        "replace_copy_if"		   stlkw
+        "replace_if"			   stlkw
+        "return_temporary_buffer"	   stlkw
+        "reverse"			   stlkw
+        "reverse_bidirectional_iterator"   stlkw
+        "reverse_copy"			   stlkw
+        "reverse_iterator"		   stlkw
+        "rotate"			   stlkw
+        "rotate_copy"			   stlkw
+        "search"			   stlkw
+        "search_n"			   stlkw
+        "set"				   stlkw
+        "set_difference"		   stlkw
+        "set_intersection"		   stlkw
+        "set_symmetric_difference"	   stlkw
+        "set_union"			   stlkw
+        "sort"				   stlkw
+        "sort_heap"			   stlkw
+        "stable_partition"		   stlkw
+        "stable_sort"			   stlkw
+        "stack"				   stlkw
+        "string"			   stlkw
+        "string_char_traits"		   stlkw
+        "swap"				   stlkw
+        "swap_ranges"			   stlkw
+        "times"				   stlkw
+        "transform"			   stlkw
+        "unary_function"		   stlkw
+        "unary_negate"			   stlkw
+        "uninitialized_copy"		   stlkw
+        "uninitialized_fill"		   stlkw
+        "uninitialized_fill_n"		   stlkw
+        "unique"			   stlkw
+        "unique_copy"			   stlkw
+        "upper_bound"			   stlkw
+        "value_type"			   stlkw
+        "vector"			   stlkw
+        "wstring"			   stlkw
+	"std" stlkw
+	"iterator" stlkw
+	"const_iterator" stlkw
+	"const_reverse_iterator" stlkw
+	"noexpect" typoed_glue
+	"unsinged" typoed_glue
+	"singed" typoed_glue
+	"pubic" typoed_glue
+#	"TASK" hello
+done
+	"a-z$A-Z0-9_"	ident
+
+:hello	Hardcoded
+	*	hello
+	")"	idle
+
+
+:bisonident BisonIdent
+	*	idle noeat
+:bisonident2 BisonKw
+	*	idle noeat
+
+:type Type
+	*	idle noeat
+:kw Keyword
+	*	idle noeat
+:wchartype WCharContent
+	*	idle noeat
+:stlkw STLkw
+	*	idle noeat
+#	":"	stlkw_colon recolor=-1
+#:stlkw_colon InvalidNumber
+#	*	idle noeat
+#	":"	was_glue recolor=-2

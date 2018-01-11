@@ -4,3 +4,9 @@
 [submodule "ep1/dostools/inputter"]
 	path = ep1/dostools/inputter
 	url = git://bisqwit.iki.fi/inputter.git
+[submodule "ep2/textbox"]
+	path = ep2/textbox
+	url = https://gist.github.com/458048c60d271ab2536665cb81595c6b.git
+[submodule "ep2/dostools/inputter"]
+	path = ep2/dostools/inputter
+	url = git://bisqwit.iki.fi/inputter.git

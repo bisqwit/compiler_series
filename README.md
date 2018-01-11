@@ -16,3 +16,10 @@ Episode date: 2017-12-29
 
 Files: `ep1/`
 
+## Episode 2: Rudimentary optimizations
+
+Video link: TBA  
+Episode date: TBA  
+
+Files: `ep2/`
+

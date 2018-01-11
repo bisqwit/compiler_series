@@ -1,0 +1,383 @@
+# JOE syntax highlight file for Javascript
+
+# A (deterministic) state machine which performs lexical analysis of C.
+# (This is the "assembly language" of syntax highlighting.  A separate
+# program could be used to convert a regular expression NFA syntax into this
+# format).
+
+# Each state begins with ':<name> <color-name>'
+# <color-name> is the color used for characters eaten by the state
+# (really a symbol for a user definable color).
+
+# The first state defined is the initial state.
+
+# Within a state, define transitions (jumps) to other states.  Each
+# jump has the form: <character-list> <target-state> [<option>s]
+
+# There are two ways to specify <character-list>s, either * for any
+# character not otherwise specified, or a literal list of characters within
+# quotes (ranges and escape sequences allows).  When the next character
+# matches any in the list, a jump to the target-state is taken and the
+# character is eaten (we advance to the next character of the file to be
+# colored).
+#
+# The * transition should be the first transition specified in the state.
+#
+# There are several options:
+#   noeat     	do not eat the character, instead feed it to the next state
+#             	(this tends to make the states smaller, but be careful: you
+#		can make infinite loops).
+#
+#   recolor=-N	Recolor the past N characters with the color of the
+#		target-state.  For example once /* is recognized as the
+#		start of C comment, you want to color the /* with the C
+#		comment color.
+#
+#   buffer    	start copying characters to a buffer, beginning with this
+#		one (it's ok, to not terminate buffering with a matching
+#		'strings' option- the buffer is limited to leading 19
+#		characters).
+#
+#   strings	A list of strings follows.  If the buffer matches any of the
+#		given strings, a jump to the target-state in the string list
+#		is taken instead of the normal jump.
+#
+#   istrings	Same as strings, but case is ignored.
+#
+#   The format of the string list is:
+#
+#      "string"   <target-state>
+#      "string"   <target-state>
+#      done
+#
+# Weirdness: only states have colors, not transitions.  This means that you
+# sometimes have to make dummy states with '* next-state noeat' just to get
+# a color specification.
+
+
+# Define no. sync lines
+# You can say:
+# -200     means 200 lines
+# -        means always start parsing from beginning of file when we lose sync
+#          if nothing is specified, the default is -50
+
+# Define colors
+#
+# bold inverse blink dim underline
+# white cyan magenta blue yellow green red black
+# bg_white bg_cyan bg_magenta bg_blue bg_yellow bg_green bg_red bg_black
+-3000
+
+# Blank characters are outputted in this colour
+=Background	white bg_000
+
+# Comments
+=Comment	fg_411
+
+# Most operators
+=Special	fg_033
+# Another class of operators
+=Special2	green
+# Operators that have a "=" in them
+=AssignColor	fg_251
+
+# Numeric constants
+=Numeric 	fg_315
+# Errors in numeric constants
+=InvalidNumber	fg_500 bg_542
+# Numeric suffixes (U,L,F)
+=NumericSuffix  fg_415
+
+# String2 constants
+=String2	fg_024
+=String2Content	fg_035
+# String1 constants
+=String1	fg_021
+=String1Content	fg_052
+
+# When "\n" is met in a string
+=AbruptStringTermination YELLOW bg_100
+
+# Reserved words
+=Keyword 	WHITE
+
+# All other identifiers
+=Identifier	fg_333
+
+# All unrecognized content
+=Mystery	fg_500 bg_542
+
+=Regex		yellow
+
+
+########################
+# The rules begin here.
+:newline Background
+	*		idle noeat
+	" \t"	newline
+
+
+
+# All following states are for when we're not in a preprocessor line
+
+:idle Mystery
+	*		idle
+	"()?~"		special		recolor=-1
+	":[]{},;"	special2	recolor=-1
+	"!<>"		maybe_comp	recolor=-1
+	"="		maybe_comp_eq	recolor=-1
+	"-+*%&|^"	maybe_op_assign recolor=-1
+	" \t"	space		recolor=-1
+	"/"		slash		recolor=-1
+	"0"		first_digit_0   recolor=-1
+	"1-9"		first_digit	recolor=-1
+	"."		period		recolor=-1
+	"\""		string2begin	recolor=-1 noeat
+	"'"		string1begin	recolor=-1 noeat
+	"a-zA-Z_"	ident		recolor=-1 buffer
+	"\n"		newline
+
+:space Background
+        *               idle noeat
+
+# Delimiters
+:special Special
+	*		idle noeat
+:special2 Special2
+	*		idle noeat
+:period Special
+	*		idle noeat
+	"0-9"		float		recolor=-2
+:slash Special
+	*		idle noeat
+	"*"		comment		recolor=-2 # "/*"
+	"/"		line_comment	recolor=-2 # "//"
+	"="		was_op_assign	recolor=-2 # "/="
+	"^"		regex           recolor=-2
+	"\\"		regex_escape	recolor=-2
+	"["		regex_range	recolor=-2
+
+:regex Regex
+	*		regex
+	"\\"		regex_escape
+	"["		regex_range
+	"/"		regex_suffix
+	"\n"		newline
+:regex_escape Regex
+	*		regex
+:regex_range Regex
+	*		regex_range
+	"\\"		regex_range_escape
+	"]"		regex
+	"\n"		newline
+:regex_range_escape Regex
+	*		regex_range
+:regex_suffix Regex
+	*		idle noeat
+	"gi"		regex_suffix
+
+# "==" vs "="
+:maybe_comp_eq AssignColor
+	*		idle noeat
+	"="		was_comp recolor=-2
+# "<=", ">=", "==", "!="
+:maybe_comp Special
+	*		idle noeat
+	"="		was_comp recolor=-2
+:was_comp Special
+	*		idle noeat
+
+# "+=", "-=", "*=", "/=", "%=", "&=", "|="
+:maybe_op_assign Special
+	*		idle noeat
+	"="		was_op_assign recolor=-2
+:was_op_assign AssignColor
+	*		idle noeat
+
+
+# Comments
+:comment Comment
+	*		comment
+	"*"		maybe_end_comment
+
+:maybe_end_comment Comment
+	*		comment
+	"/"		idle
+	"*"		maybe_end_comment
+
+:line_comment Comment
+	*		line_comment
+	"\\"		line_comment_escape
+	"\n"		newline
+:line_comment_escape Comment
+	*		line_comment
+
+# Numeric constants
+:first_digit_0 Numeric
+	*		first_digit	noeat
+	"xX"            hex_first
+:first_digit Numeric
+	*		number_before_e noeat
+
+:hex_first Numeric
+	*		end_number_suffix noeat recolor=-2
+	"0-9A-Fa-f"	hex
+	"."		hexfloat
+:hex Numeric
+	*		end_int noeat
+	"0-9A-Fa-f"	hex
+	"."		hexfloat
+	"pP"		epart
+:hexfloat Numeric
+	*		end_number_suffix noeat recolor=-2
+	"0-9A-Fa-f"	hexfloat
+	"pP"		epart
+:number_before_e Numeric
+	*		end_int noeat
+	"0-9"		number_before_e
+	"."		float
+	"eE"            epart
+
+:float Numeric
+	*		end_float noeat
+	"eE"		epart
+	"0-9"		float
+:epart Numeric
+	*		enum_first noeat
+	"-+"		enum_first
+:enum_first Numeric
+	*		end_number_suffix noeat recolor=-2
+	"0-9"		enum
+:enum Numeric
+	*		end_float noeat
+	"0-9"		enum
+:end_float NumericSuffix
+	*		end_number_suffix noeat
+	"fFlL"		end_number_suffix #f, #l
+:end_int NumericSuffix
+	*		end_number_suffix noeat
+	"uU"		int_suffix_u	#u
+	"lL"		int_suffix_l	#l
+:int_suffix_u NumericSuffix
+	*		end_number_suffix noeat
+	"lL"		int_suffix_ul	#ul
+:int_suffix_ul NumericSuffix
+	*		end_number_suffix noeat
+	"lL"		end_number_suffix #ull
+:int_suffix_l NumericSuffix
+	*		end_number_suffix noeat
+	"uU"		end_number_suffix  #lu
+	"lL"		int_suffix_ll	#ll
+:int_suffix_ll NumericSuffix
+	*		end_number_suffix noeat
+	"uU"		end_number_suffix #llu
+:end_number_suffix InvalidNumber
+	*		idle noeat
+	"a-zA-Z_0-9"	end_number_suffix
+
+# String2s
+:string2begin String2
+	*		string2
+:string2end String2
+	*		idle noeat
+
+:string2	String2Content
+	*		string2
+	"\""		string2end recolor=-1
+	"\\"		string2_escape
+	"\n"		invalid_string_char_flush recolor=-2
+:string2_escape String2Content
+	*		string2
+	"\n"		string2
+	""		string2_escape_ignore noeat
+:string2_escape_ignore Background
+	*		string2_escape
+
+
+# Chars
+:string1begin String1
+	*		string1
+:string1end String1
+	*		idle
+
+:string1 String1Content
+	*		string1
+	"'"		string1end noeat
+	"\\"		string1_escape
+	"\n"		invalid_string_char_flush recolor=-2
+:string1_escape	String1Content
+	*		string1
+	"\n"		string1
+	""		string1_escape_ignore noeat
+:string1_escape_ignore Background
+	*		string1_escape
+
+
+# This is if a "\n" is met inside a string2 or string1 constant.
+# It serves two purposes:
+#   Helps getting back in sync
+#   Minimizes terminal traffic when entering strings
+:invalid_string_char_flush AbruptStringTermination
+	*		newline noeat
+
+# Special identifiers
+:ident Identifier
+	*		idle noeat strings
+	"abstract"	kw
+	"boolean"	kw
+	"break"	kw
+	"byte"	kw
+	"case"	kw
+	"catch"	kw
+	"char"	kw
+	"class"	kw
+	"const"	kw
+	"continue"	kw
+	"default"	kw
+	"do"	kw
+	"double"	kw
+	"else"	kw
+	"extends"	kw
+	"false"	kw
+	"final"	kw
+	"finally"	kw
+	"float"	kw
+	"for"	kw
+	"function"	kw
+	"goto"	kw
+	"if"	kw
+	"implements"	kw
+	"import"	kw
+	"in"	kw
+	"instanceof"	kw
+	"int"	kw
+	"interface"	kw
+	"long"	kw
+	"native"	kw
+	"new"	kw
+	"null"	kw
+	"package"	kw
+	"private"	kw
+	"protected"	kw
+	"public"	kw
+	"return"	kw
+	"short"	kw
+	"static"	kw
+	"super"	kw
+	"switch"	kw
+	"synchronized"	kw
+	"this"	kw
+	"throw"	kw
+	"throws"	kw
+	"transient"	kw
+	"true"	kw
+	"try"	kw
+	"val"	kw
+	"var"	kw
+	"while"	kw
+	"with"	kw
+done
+	"a-zA-Z0-9_"	ident
+
+:kw Keyword
+	*	idle noeat
