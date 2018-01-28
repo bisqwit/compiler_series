@@ -1,0 +1,12 @@
+//{x = 0; while 1 {x = (x+1); }; }
+test2:
+{
+  var x;
+  
+  while(0) { x=x+4; }
+  while(1) { x=x+1; }
+  
+  x = 7;
+  return x;
+}
+  

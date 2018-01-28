@@ -1,6 +1,6 @@
-conj: conj.cc
+conj: conj.cc textbox.hh
 	#g++ -o $@ $^ -Wall -Wextra -Ofast -g -std=c++1z -DYY_NULLPTR=nullptr
-	g++ -o $@ $^ -Wall -Wextra -O0 -fsanitize=address -g -std=c++1z -DYY_NULLPTR=nullptr
+	g++ -o $@ $< -Wall -Wextra -O0 -fsanitize=address -g -std=c++1z -DYY_NULLPTR=nullptr
 
 conj.cc: conj.cc.re
 	#re2c -d -o "$@" "$<"

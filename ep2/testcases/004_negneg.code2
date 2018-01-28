@@ -1,0 +1,4 @@
+//return x
+test x:                      return -(-(x));
+//return -(x)
+test2 x:                     return -(-(-(x)));

@@ -1,0 +1,6 @@
+//{a&&b&&((c = x), x); return x; }
+test1 a,b,c,d,e, x:
+{
+  if(a && b && 1 && (c = x) && d && 0 && e) { x=1; }
+  return x;
+}

@@ -1,0 +1,2 @@
+//return a+c+d+a+c+b+c+11
+sum a,b,c,d:                 return (a+4) + (c+d+7) + (a+c) + (b+c);

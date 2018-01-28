@@ -1,0 +1,623 @@
+مساء الخير (good evening, mässā ul’che’rii)
+	[Slide 1, Fade to Slide 2, Fade to Slide 3, Fade to Slide 4]
+	[use Length() and jit-conj-parser15.png]
+In the last episode, we created a parser for a B-like programming language.
+It parses each function into a tree structure, where expressions contain expressions.
+
+Today, we will focus on optimization.
+
+As I have said before, much in programming is actually work
+towards making the work itself easier.
+
+The code I wrote so far
+does not single-mindedly just aim towards the end result.
+
+	[Slide 5: splitscreen view of #define, e_##n from ep1, and slide showing what it compiles to]
+Code like this, for instance,
+helps constructing expressions
+using much shorter code
+than would be otherwise necessary.
+
+	[code 100, is_*]
+In that similar mindset,
+these functions I just added
+help identifying the type of the expression
+or the identifier.
+
+The topic of today’s video however, is optimization.
+In the interest of getting this video out in reasonable time,
+I am going to compromise a little bit on good programming practices.
+	[code 110]
+I start by taking the list of functions out from inside the main program,
+and moving it into a global variable.
+This will simplify the rest of this episode quite a bit.
+	[code 120]
+Much of the optimizations in today’s episode concern
+with replacing code with simpler alternatives
+that accomplish the same outcome.
+	
+One of the most important factors that decide whether some code
+can be replaced with some other code is whether that code has
+side-effects or not.
+A side-effect is when an expression produces any other outcome
+than its return value.
+
+In this is_pure() function,
+we already wrote some basic rules in episode 1,
+but so far we assumed that any function call automatically taints the expression as inpure.
+
+This is not necessarily the case.
+	[Slide 6]
+Calling a pure function, such as one that simply returns the sum of two variables, is a pure expression.
+For example, replacing two calls to the same function with one call, or deleting the call entirely,
+will not change how the program works assuming the same result is calculated.
+	
+	[code: Proceed with 131; 135 starts pure_fcall definition]
+We need a way to classify functions.
+This is more complicated than it sounds;
+the pure_fcall cannot just make the decision when it is called.
+Instead, if will check a precalculated variable.
+There is one variable that indicates whether the function is pure,
+and another that tells whether we even know whether the function is pure or not.
+
+	[code 150]
+Of course, we need a way to calculate these variables.
+
+My language does not have any global variables,
+but it has pointers.
+If a function takes a pointer parameter,
+and it dereferences a pointer on the left side of an assign operator,
+we can assume the function has side-effects.
+It causes changes outside strictly its return value.
+Of course, the effect is commutative. No, viral. No, what’s the term for that?
+If the function calls another function that has side-effects,
+this function, too will have side-effects.
+	[code 190]
+Because the dependency chain between functions may run in any order,
+we must loop this resolving process
+until we no longer cannot find any new function
+to discern as certainly pure or impure.
+
+To implement this function right now,
+we needed a special kind of for-loop
+that iterates through all sub-expressions
+in an expression tree.
+	[code 200]
+Here is how I defined the for_all_expr function.
+It operates on the depth-first principle.
+The first node to be processed will be the deepest possible child node.
+After all child nodes have been processed,
+only then will the parent node also be processed.
+For convenience’s sake, I decided to support two kinds of functors.
+Those which return a boolean value, false or true,
+to indicate whether whatever the caller was looking for has
+been found and the processing should be stopped immediately,
+and those that return nothing.
+	[code 203]
+To support both conventions, a helper function is needed,
+that unifies both types of functions.
+If the provided functor returns nothing,
+this function returns the default parameter given.
+Otherwise it returns whatever the functor returns.
+I am surprised there is not such a function already
+in the standard library.
+
+	[code 240]
+While we are at it, let’s add a function that compares two expressions
+and tells whether they are equal. This will be very helpful later.
+
+	[code 300]
+The first category of optimizations we are going
+to do is called “constant folding”.
+We are going to walk through every single expression
+in the code, and optimize them
+using this ConstantFolding function.
+
+	[code 330]
+We start by checking the type of the expression.
+	[code 340]
+If the expression is, say, a negate operation,
+and the parameter is an integer constant,
+we can replace the negate operation with
+the negated integer constant.
+	[code 350]
+If the expression is an equals-comparison,
+and both operands are integer constants,
+we can perform the comparison at compile-time
+and simply replace the expression with an
+integer constant, zero or one.
+The same can be done if we the operands are
+identical pure expressions.
+	[code 360]
+Actually, the name of this function is a bit of a misnomer.
+This function does all sorts of simplifications to the expression.
+For instance, pointer expressions can be simplified,
+if an address-of operator is immediately followed
+by a dereference operator, or vice versa.
+	[code 370]
+If an assign-statement has the same expression on both sides,
+the assign-operation is redundant and can be replaced with
+the source operand, assuming the operand has no side effects.
+	[code 380]
+If we know at compile time that a loop operation will never
+loop, we can delete the entire loop statement.
+	[code 400]
+Now the add-operation requires much more work.
+Let’s get back to that later,
+because there is a certain general principle
+we must take care of first.
+
+	[jit-conj-parser6.png, show top-left]
+Let me show you what I mean.
+This is the tree structures that the compiler generates
+when it parses an add-expression that contains four operands.
+It generates three add-expressions, that each have two operands.
+	[zoom out]
+But the thing is,
+this exact same outcome can be accomplished
+with many different structures.
+Some of these work only
+because the add-operator is commutative,
+meaning the order of operations does not matter,
+but the simplest possible structure
+is the one shown in the lower-right corner,
+where we have exactly one add-operator,
+and four parameters.
+	[jit-conj-parser7.png]
+Interestingly enough, this same optimization can be
+performed on some operators that are not commutative,
+as long as you keep the order of execution unchanged.
+For example the and-operator.
+All of these trees perform the same sequence of operations,
+but again the fourth one is the simplest one.
+	[code 410]
+So for add, comma, logical or, and logical and operators,
+check if any child expression is the same type as the parent expression.
+For every such child that is found,
+adopt the grandchildren directly.
+	[code 420]
+Now the add-expression may contain an assorted mixture
+of all kinds of expressions, including number literals.
+Just in case there are multiple number literals in the add-group,
+or maybe there is a zero there, we'll quickly sum them up.
+	[code 425]
+If the sum is nonzero, we’ll add it back.
+	[code 430]
+While we are at it, we can also convert negations
+into a slightly more efficient format.
+	[code 450]
+After all this work, there is a possibility
+that the expression has been reduced into just
+a single operand, or possibly nothing at all.
+In such cases, the expression can be reduced further.
+
+But we are only getting started!
+
+Next let’s tackle the && and || operators.
+	[jit-conj-parser9.png]
+
+Consider this example expression.
+Consider how this is evaluated.
+First, “a” is checked.       If it is zero, the process stops and the && evaluates into 0.
+Otherwise, “b" is checked.   If it is zero, the process stops and the && evaluates into 0.
+Otherwise, one is checked. Well, one is not zero.
+So the next expression is checked. “x” is stored into “c”.
+                     If the result is zero, the process stops and the && evaluates into 0.
+Otherwise, “d” is checked.   If it is zero, the process stops and the && evaluates into 0.
+Well, zero is zero. So the process stops and && evaluates into 0.
+
+There are two observations to be made here.
+The value of “e” was never checked,
+because the literal zero that preceded it
+meant that nothing that comes after it is evaluated!
+Also, because of the presence of the zero,
+we *know* the && expression always returns zero in this case.
+Technically, all of these expressions that we evaluated were useless.
+
+	[zoom out]
+We can optimize the expression like this.
+The literal 1 expression was deleted, because that cannot contribute to the result in any manner.
+“e” was also removed, because it is never evaluated.
+“d” was removed too, because this expression has no side-effects,
+so it does not influence the outcome in any manner.
+However, neither “a” nor “b” can be removed,
+because their values determine
+whether the assignment expression gets executed or not.
+The assignment expressions is not a pure expression,
+so it cannot be deleted either.
+Finally, because we already know what the && operator will return — always a zero,
+we can simply ignore the return value
+and just return a literal zero using a comma operator.
+This may benefit other optimizations that come later.
+
+	[switch to jit-conj-parser9b.png]
+The || operator works exactly the same,
+except that the consequences of zero and nonzero are reversed.
+
+	[code 470]
+So, delete all operands that cannot possibly change the outcome.
+If an operand is encountered
+that shortcuts the evaluation
+and forces the outcome,
+delete all operands that came after that operand.
+
+	[code 500]
+Next, we tackle the comma expressions.
+This is where it gets complicated,
+but let’s start gentle.
+	[code 510]
+Comma expressions are basically sequences of operations.
+If we encounter an operation that causes
+everything that comes after it
+to be never executed, such as a return statement,
+the remaining operations in the comma can be deleted.
+	[code 530]
+This is one particular special case that I also deal with here.
+	[finish 535, wait for 540]
+	[jit-conj-parser8.png]
+Have a look at this comma expression.
+	[scroll to 2nd]
+No, wait. This one.
+That’s actually an optimization I am yet to write.
+Here.
+This is a comma expression. A sequence of assorted operations.
+	[scroll to show 3rd too]
+Only the result of the last comma expression is important;
+In this case it is the assignment into z.
+But expressions with side-effects have to be kept too.
+While the dereference of “s” is not an expression with side-effects,
+and of course neither is plus operation on the far left side,
+the assignment operation has side-effects,
+so that one has to be kept.
+	[code 540]
+So, we loop through all the parameters.
+Any pure expressions, except the last, will be deleted.
+However, even if the expression is not pure, its impurity may be limited.
+For certain types of expressions,
+we can skip over the calculation
+and just rob the operands.
+	[code 570]
+We can also apply the exact same logic into while-loops,
+as long as we are careful to not accidentally delete the loop condition expression.
+	[finish 579, wait for 580]
+
+	[jit-conj-parser10.png, show middle]
+Consider this expression: x + 3 + open-parens y assign 4 close-parens.
+This expression accomplishes two things:
+It assigns four into “y”. And it returns a value.
+What does it return? It returns “x” plus 7.
+However, currently the code is unable to optimize this as “x” plus 7,
+because the four is hidden inside that parenthesis-expression.
+	[show left & middle]
+A naïve attempt would be to sum these two numeric literals,
+which would produce this expression.
+But this would be a blunder.
+While the expression does now correctly *return* “x” plus 7,
+it no longer assigns four into “y”.
+It now assigns seven into “y”.
+	[cross over the error]
+So we cannot do that.
+	[show middle & right]
+The correct way to optimize this is shown on the right.
+A comma expression is created between the assignment and the plus operation,
+and the right-hand side of the assign expression is duplicated.
+	[scroll down]
+This way, other optimizations in this program will eventually
+convert this expression like this.
+The result is exactly what we wanted in the first place:
+Four is assigned into “y”,
+and then “x” plus seven is calculated
+and this value is the result of the expression.
+	[page down]
+However!
+If the right-hand side of the assign expression has side-effects,
+the optimization I proposed here would be a mistake,
+because it causes the expression to be evaluated twice.
+	[scroll down, left; reveal bottom-right while speaking]
+This is what must be done instead.
+The result of the side-effect expression is assigned into a temporary variable,
+and that temporary variable can be then copied as many times as necessary.
+	[code 580, wait until 600]
+	[code 600]
+The next operation is fascinating.
+Consider this example expression:
+	[jit-conj-parser11.png, show top]
+assign z with the sum of x++ and y++.
+The parser generates this complicated tree for this expression.
+There are two comma expressions, and the sum of these comma expressions
+is assigned into “z”.
+	[zoom out]
+This is what we can convert it into.
+Two things have happened here.
+First, the comma expressions from the inside of the outer sum expression have
+been extracted, so that only the last components of the comma expressions are
+retained in the sum.
+Then, the assign into “z” is moved inside the comma expression.
+This produces an overall much flatter tree structure than we started with.
+Where there were six nested levels of expressions before,
+there are now at most three,
+yet it still behaves exactly the same as before.
+	[jit-conj-parser12.png]
+We can also do the same operation for the first element in && and || expressions,
+as long as we only operate on the first element, and not on the rest.
+	[code 610]
+We begin by scanning the parameter list backwards from the end anchor,
+until we find a comma expression.
+This delimits the parameters into two sections.
+The first section will be processed.
+	[code 625]
+If there is a comma expression,
+its parameters will be moved into the outer comma expression,
+except for the last one.
+	[code 630]
+If something was moved,
+then this expression is replaced with a comma
+where the original expression is its last item.
+	[code 640]
+However, for anything except the last parameter in the first section,
+the expression is moved into a temporary variable and that temporary
+variable is put in its place.
+This ensures that the order in which different expressions are evaluated will not change.
+	[wait until 700]
+	[jit-conj-parser12.png, show top two]
+Now if we take these rules for the “if” expression,
+and try to apply it
+	[jit-conj-parser13.png, show top two]
+to the “while” expression verbatim, we will produce incorrect behavior.
+In the original expression, the “x” variable gets incremented on each loop,
+but in this modified form, the “x” variable gets incremented only once, before the loop.
+	[scroll down]
+Here is how it must be corrected.
+The parts that were extracted from inside the loop
+to the outside of the loop
+	[jit-conj-parser14.png, same position]
+must be replicated at the end of the loop.
+	[code 700]
+Yes, this optimization may actually make the code longer.
+But it has to be done,
+if we wish to enable certain other optimizations to work. 
+
+	[code 800]
+Now you may have noticed that this optimization function
+does not necessarily bring out the best possible result
+immediately.
+It may have to be run multiple times.
+	[code 820]
+We will simply run this loop as long as running the optimization
+for one of the functions produces any changes to the structure.
+
+--------
+I created a couple of testcases to make sure this works as intended.
+
+	[picture 001]
+In this layout, on the top you can see the original code.
+On the left, what the parser produced for this code,
+and on its right side, how it was optimized.
+This first example shows how powerful the add-expression
+flattener is.
+You can also see it calculated the sum of four and seven at compile time,
+despite them being in separate sub-expressions.
+	[picture 002]
+In the second example I modified the numbers so that their sum is zero.
+You can see the integer literal is completely absent from the optimized output,
+because adding zero to something would not accomplish anything.
+	[picture 003]
+The third example experiments with the negation operations.
+The original expression contains five negations, but the optimized
+expression contains only four.
+You can verify this on pen and paper
+if you don’t believe this optimization was correct.
+	[picture 004]
+The simple removal of two consecutive neg-operations seems to work alright.
+An odd number of neg-operations still retains one, as it should.
+	[picture 005]
+Pairs of address-of and dereference operations get reduced, too.
+	[picture 006]
+This is one of the tests for the comma reducer.
+Ignore the first two functions,
+they are just artificial examples of pure and impure functions
+for the sake of the test.
+The actual test function contains a sequence of five statements,
+plus the implicit return statement.
+As we can see, the optimizer detected all the pure expressions
+and deleted them.
+The last expression in the list is kept,
+even though it is pure,
+because it is returned as the function return value.
+
+	[picture 007]
+This testcase has three functions.
+In the top example, x is stored into x.
+Somehow it gets optimized into nothing. How come?
+
+Let’s look at the middle function first.
+x is stored into x, and then it is returned.
+Storing a variable into itself gets optimized into just the variable itself.
+Now, when we look back at the first function, we can guess what happened.
+First, the self-assignment got optimized as just the variable.
+Then, the variable was removed,
+because it was a pure expression
+in a comma statement.
+The assignment was not a pure expression,
+but the variable alone was pure.
+So it got removed.
+Only the return statement remains.
+
+In the third function,
+the left-hand side and the right-hand side
+of the assign expression are not identical,
+so the assignment was not removed.
+However, the source operand was duplicated
+for the return value.
+And here it seems there is actually a bug in my design!
+If you pass, say, number eight,
+as a parameter to this function,
+you would expect that the function returns nine.
+But the “optimized” version first increments
+the variable once,
+and then increments it *again* when returning,
+so it actually returns ten instead of nine!
+
+This is a bug that must be fixed! Let’s make a note about that.
+This is why we test.
+
+	[picture 008a]
+Here is another example of the comma optimization.
+Here, this function contains two return statements.
+The second return statement can never be reached,
+so the optimizer deleted it.
+The function always returns 100.
+
+	[picture 008b]
+In this example we have two while-loops.
+The first while-loop will never run,
+because the loop condition is known at compile-time to be false.
+So it was deleted.
+The second while-loop, on the other hand,
+never terminates. It is an infinite loop.
+So any code that comes after that is dead code;
+it can never be reached.
+So the rest of the code was deleted
+by the optimizer.
+
+	[picture 009a]
+Then we have the && sequence.
+This is exactly the same example as earlier at 9:21 in this video.
+The one was deleted, because it cannot change the result.
+The zero was deleted, because it forces the result.
+The “e” was deleted, because it would never be evaluated because of the zero.
+
+	[picture 009b]
+This is the || version.
+Here, because the compiler knows at compile-time that this || expression
+will always match because of the one literal,
+it made that assignment into x explicit rather than conditional.
+
+	[picture 010a]
+This function does two-postincrements.
+There is nothing too interesting about this test other than
+that the optimized tree is a great deal simpler
+than the original one.
+The optimizer did *not* notice that the value of "x" is never
+used after it is incremented,
+and technically it could delete the whole addition,
+but that’s all right,
+I didn’t write that kind of optimization yet.
+We will get to that topic in the third or fourth episode.
+
+	[picture 010b]
+This is almost the same as the previous one,
+except now we have a function call instead of an addition.
+There is something weird here.
+Notice the function call?
+It seems to have created a temporary variable,
+stored a pointer into the function into that variable,
+and then called the function indirectly at the end.
+	[music: Monkeys, Earthbound]
+This is not *incorrect* behavior, but it is certainly odd,
+and very likely a pessimization. I will have to fix that.
+
+	[picture 011]
+This is the optimization that I explained in great detail at 14:11 in this video.
+The assign expression is flattened out
+in order to make the add-expression
+optimizable…
+But something is wrong here.
+The compiler has created a temporary variable
+for the number three literal,
+and this blocks the optimizer from performing
+the very purpose it was designed to do.
+I will have to fix this too!
+
+	[code 900]
+The problem with the last two tests was
+that the compiler created temporary variables
+for simple expressions
+that were effectively compile-time constants.
+
+The is_pure() function is not enough to detect
+these situations.
+We need a second classification method
+that determines whether an expression
+conveys a compile-time constant.
+
+A compile-time constant is a number literal
+or a string literal,
+or a function identifier,
+or any simple expression that consists of only compile-time constants.
+	[code 950]
+We can immediately use this function
+to simplify some existing code. 
+	[code 960]
+So here! This is the loop that hoists
+sub-expressions out from parents and
+replaces them with temporaries.
+We will just simply check that if the expression
+is a compile-time constant,
+the hoisting is not performed.
+Done.
+
+Then there was that problem with the x+1 assignment going wrong.
+	[code 970]
+This is easiest to fix here, when checking for the self-assignment.
+	[code 980]
+In short, if the target expression is also used in the source
+expression, a temporary variable will be created,
+and that temporary variable will be referred to in each
+location in the source expression.
+Then, it no longer matters if the temporary variable gets duplicated.
+	[wait until 999]
+	[picture 007]
+Now let’s get back to test 7.
+	[wipe into 007_ with some eerie sfx & waves]
+This is how it changed.
+The +1 expression still gets duplicated,
+but the function does not change,
+a bug is not introduced,
+which is the most important thing.
+It would be nice if the whole source expression did not have
+to be duplicated — it really does not need to be duplicated —
+but no optimizer is perfect. If I copied the target expression
+instead of the source expression,
+that plus-seven optimization would be impossible.
+	[picture 011]
+Speaking of that.
+This is what happens when the source expression
+is *not* duplicated properly,
+but dubious temporary variables are created.
+And we fixed that.
+	[picture 011_]
+Now, it gets optimized properly as was originally intended,
+thanks to the compile-time constant detection.
+
+Technically that assignment into a temporary variable
+is unnecessary here, but it does not hurt.
+
+In the next episode we will deal
+with a whole new category of optimizations
+that makes all these temporary variables
+not matter in the least.
+
+	[TODO: Teaser montage of next episode]
+We will create a register-based
+intermediate language
+that is one step closer
+to actual machine code.
+
+Subscribe to my channel and click the bell icon
+to make sure you won’t miss one episode!
+
+As always, thank you for all your support.
+In case you have questions,
+make sure you first check the video description,
+the links in the video description,
+and the top-fiveish comments.
+to make sure your question has not been already answered twenty times.
+I do appreciate and heartily welcome all of your comments,
+thumbsups, shares, and so on,
+but it will make things faster for you
+if you just spent ten seconds looking first
+whether your question has already been answered.
+
+Have a most pleasant and fulfilling day,
+نراكم مرة أخرى (see you again, nräkum ^märätän _uchra).

@@ -1,0 +1,11 @@
+//{x = 0; x = -4; while ((x==0)==0) {x = (x+1); }; return 100; }
+test:
+{
+  var x = -4;
+  
+  while(x != 0) { x = x+1; }
+  
+  return 100;
+  
+  return x = 3;
+}

@@ -1,0 +1,2 @@
+func x,y:                    ;
+test2 x,y:                   return func(x++, y++) + 4;

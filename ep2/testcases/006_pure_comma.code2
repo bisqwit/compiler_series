@@ -1,0 +1,8 @@
+pure_function:               ;
+has_side_effects_function:   *pure_function = 0;
+
+//{b = 2; has_side_effects_function(a); return a+b+c; }
+test a,b,c:
+{
+  return (a, b=2, c, has_side_effects_function(), pure_function, c);
+}
