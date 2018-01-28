@@ -10,3 +10,6 @@
 [submodule "ep2/dostools/inputter"]
 	path = ep2/dostools/inputter
 	url = git://bisqwit.iki.fi/inputter.git
+[submodule "ep2/dostools/that_editor"]
+	path = ep2/dostools/that_editor
+	url = git@github.com:bisqwit/that_editor.git
