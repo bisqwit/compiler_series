@@ -18,8 +18,8 @@ Files: `ep1/`
 
 ## Episode 2: Rudimentary optimizations
 
-Video link: TBA  
-Episode date: TBA  
+Video link: https://youtu.be/QSPaL4aVjRo  
+Episode date: 2018-01-29  
 
 Files: `ep2/`
 
