@@ -66,6 +66,7 @@ struct expression
     expression(long v)              : type(ex_type::number), numvalue(v) {}
 
     bool is_pure() const;
+    bool is_compiletime_expr() const;
 
     expression operator%=(expression&& b) && { return expression(ex_type::copy, std::move(b), std::move(*this)); }
 };
@@ -331,6 +332,22 @@ bool expression::is_pure() const
     }
 }
 
+bool expression::is_compiletime_expr() const
+{
+    for(const auto& e: params) if(!e.is_compiletime_expr()) return false;
+    switch(type)
+    {
+        case ex_type::number: case ex_type::string:
+        case ex_type::add:    case ex_type::neg:    case ex_type::cand:  case ex_type::cor:
+        case ex_type::comma:  case ex_type::nop:
+            return true;
+        case ex_type::ident:
+            return is_function(ident);
+        default:
+            return false;
+    }
+}
+
 // callv: Invokes the functor with args.
 // Returns its return value, except, if func returns void, callv() returns def instead.
 template<typename F, typename B, typename... A>
@@ -376,7 +393,7 @@ static void FindPureFunctions()
             {
                 const auto& e = exp.params.front();
                 // Indirect function calls are always considered impure
-                if(!is_ident(e) || !is_function(e.ident)) return true;
+                if(!e.is_compiletime_expr()) return true;
                 // Identify the function that was called
                 const auto& u = func_list[e.ident.index];
                 if(u.pure_known && !u.pure) return true; // An impure function called
@@ -525,7 +542,7 @@ static void ConstantFolding(expression& e, function& f)
             }
 
     // If expr has multiple params, such as in a function calls,
-    // any of those parameters are comma expressions,
+    // and any of those parameters are comma expressions,
     // keep only the last value in each comma expression.
     //
     // Convert e.g.      func((a,b,c), (d,e,f), (g,h,i))
@@ -555,7 +572,7 @@ static void ConstantFolding(expression& e, function& f)
                 if(is_comma(*i) && i->params.size() > 1)
                     comma_params.splice(comma_params.end(), i->params, i->params.begin(), std::prev(i->params.end()));
             }
-            else
+            else if(!i->is_compiletime_expr())
             {
                 expression temp = f.maketemp();
                 if(is_comma(*i) && i->params.size() > 1)
@@ -647,11 +664,28 @@ static void ConstantFolding(expression& e, function& f)
             break;
         }
         case ex_type::copy:
+        {
+            auto& tgt = e.params.back(), &src = e.params.front();
             // If an assign-statement assigns into itself, and the expression has no side effects,
             // replace with the lhs.
-            if(equal(e.params.front(), e.params.back()) && e.params.front().is_pure())
-                e = C(e.params.back());
+            if(equal(tgt, src) && tgt.is_pure())
+                e = C(M(tgt));
+            // If the target expression of the assign-statement is also used in the source expression,
+            // replace the target-param reference with a temporary variable. A new temporary is created
+            // for every repeated reference in case the expression is question is impure.
+            else
+            {
+                expr_vec comma_params;
+                for_all_expr(src, true, [&](auto& e)
+                                        { if(equal(e, tgt)) comma_params.push_back(C(e = f.maketemp()) %= C(tgt)); });
+                if(!comma_params.empty())
+                {
+                    comma_params.push_back(M(e));
+                    e = e_comma(M(comma_params));
+                }
+            }
             break;
+        }
         case ex_type::loop:
             // If the loop condition is a literal zero, delete the code that is never executed.
             if(is_number(e.params.front()) && !e.params.front().numvalue) { e = e_nop(); break; }
@@ -776,6 +810,7 @@ int main(int argc, char** argv)
     std::cerr << "Final\n";
     for(const auto& f: func_list) std::cerr << stringify_tree(f);
 }
+
 
 
 
