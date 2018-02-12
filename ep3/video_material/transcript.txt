@@ -1,0 +1,796 @@
+Good evening! [In Korean language]
+
+In episode 1 we introduced
+an abstract syntax tree, or AST,
+
+for representing and storing
+the parse results –
+
+for a made-up B-like
+programming language –
+
+for this tutorial
+on making a compiler.
+
+Now it is time
+to say good bye –
+
+to these little saplings
+we have grown to love.
+
+Because from now on,
+we do things very differently.
+	
+Say hello to our new atoms!
+– Hello.
+
+Our next intermediate
+representation –
+
+is going to be made of
+sequences of these instructions.
+
+Some people call this
+a three-address code,
+
+but I just prefer
+calling them statements.
+
+Sometimes I will call
+them instructions.
+
+The NOP statement will
+be a placeholder –
+
+that does not do anything.
+
+The INIT statement initializes
+the target register –
+
+with a reference to a function
+or another global symbol,
+
+or with an integer literal,
+or with the sum of both.
+
+The ADD and NEG statements
+do arithmetic operations.
+
+The COPY statement copies a value
+from a variable to another variable.
+
+I will usually call these variables
+as registers in this video,
+
+but we are not talking assembler yet.
+These are just local variables.
+
+The READ and WRITE statements
+read and write memory.
+
+The EQ statement compares two
+variables and stores the result.
+
+The IFNZ instruction
+branches the execution –
+
+depending on the value
+in a register.
+
+The FCALL statement
+calls a function,
+
+and the RET statement
+returns from a function.
+
+Those will be the elements,
+
+for which this episode and
+the next will be founded on.
+
+♫♫ Eerie music ♫♫
+
+Next, comes some
+template programming.
+
+The forbid template
+will be used soon –
+
+to make sure that overloaded
+functions with parameter packs –
+
+cannot contain specified types
+of elements as parameters.
+
+This require_iterator_t is also
+used in template programming –
+ 
+to make sure the function
+signature matches only,
+
+if the parameter is
+an iterator type –
+
+that points to the
+selected type of elements.
+
+Now. The statement element.
+
+The statement has
+a type of course,
+
+and it has parameters
+as discussed earlier.
+
+It also has a pointer
+to the next statement.
+
+I ran a couple of polls
+on Twitter and Discord –
+
+on how you would like me to write the constructors for this class,
+
+and based on your feedback,
+
+I eventually settled
+on this design,
+
+where each different
+type of parameters –
+
+is handled with
+a separate constructor,
+
+and delegating constructors
+are used –
+
+to process all
+parameters recursively.
+
+The INIT type statement,
+
+which has two extra member
+fields: ident and value,
+
+will be processed with
+a separate constructor –
+
+that accepts initializers
+for those fields –
+
+and also sets
+the statement type.
+
+The IFNZ type is
+processed that same way.
+
+It sets an alternative link
+to the next statement.
+
+Finally the statement can also be
+constructed using an iterator pair.
+
+This is enforced using the
+require_iterator_t typedef –
+
+that I created earlier.
+
+The forbid_t class
+is used to make sure –
+
+that the same field can
+only be initialized once.
+
+This is completely optional,
+
+but it has basically
+the same purpose as –
+
+why people write static_asserts.
+
+To catch potentially
+invalid code at compile time.
+
+The Dump method is
+rather straight-forward.
+
+A switch-case selects
+the statement type –
+
+and converts it into a string,
+
+then all parameters are printed,
+
+and if the statement
+is an INIT statement,
+
+the ident and value parameters
+are printed too.
+
+Now we get to the
+actual compiler body!
+
+♬♬ Calm music ♬♬
+
+I mean the part,
+
+that translates the tree structure
+into the statement list.
+
+First, because we don’t want –
+
+to deal with string types
+in the statement-based code,
+
+we create a global object,
+
+that concatenates all string
+constants used in the program.
+
+Later on, the program code can
+simply refer to this global object.
+
+The statements are essentially
+going to be pointers.
+
+To make sure their lifetime
+is known and determinate,
+
+instead of using reference-counting
+shared-pointers –
+
+or anything like that,
+
+we just use a single vector
+that owns all the statements.
+
+It is this all_statements vector.
+
+The type unique_ptr
+signifies that –
+
+this is the only owner
+of the statements.
+
+Anyone else, who possesses
+a pointer to a statement,
+
+is just referring to them
+without owning them.
+
+This is how I designed this,
+
+but there are many
+different ways to do it.
+
+The statements listed in
+the all_statements vector –
+
+are all equal in rank.
+
+They are just statements,
+unnamed statements somewhere.
+
+To bring meaning to the statements
+we must create a table of labels.
+
+The entry_points vector points
+to the first statement in each function.
+
+There is also the information about
+how many parameters each function takes.
+
+Say, if the function
+takes three parameters,
+
+then registers number
+0, 1, and 2 will contain –
+
+the initial values
+of those parameters,
+
+when the function is entered.
+
+The compilation will begin
+from building the string table.
+
+For each function, the number
+of parameters is saved.
+
+A temporary context is created
+for keeping track of variables –
+
+and also of the pointer where
+the next statement should be saved.
+
+The Compile function will process
+the expression tree recursively,
+
+creating statements
+corresponding to each expression,
+
+and returning the register number –
+
+where the return value
+of that expression is stored.
+
+These two utility lambdas,
+make and put,
+
+will be used multiple times
+throughout this function.
+
+First we have simple
+unary operations –
+
+like the negation
+or pointer dereference.
+
+The parameter of that
+expression is compiled first,
+
+and the register number that stores
+the result of that expression –
+
+is saved as a parameter
+in the new statement.
+
+The number literal expression
+is converted into an INIT statement.
+
+The same is also done with
+the string literal expression.
+
+A function identifier is also
+converted into an INIT statement.
+
+However, function parameters
+and local variables –
+
+do not generate any new
+statements at all:
+
+Instead, we just return
+the register number –
+
+in which that particular
+variable was stored.
+
+The add, eq and comma
+expressions are interesting –
+
+in that they may
+take multiple parameters,
+
+any number from
+one to infinity,
+
+but the statements we create –
+
+always have one target parameter
+and two source parameters.
+
+This loop converts the
+multi-parameter expressions –
+
+into two-parameter statements,
+
+using the result of
+the previous statement –
+
+as the source of the next
+statement if necessary.
+
+The copy expression,
+
+which copies the value
+of a variable into another,
+
+is one of the few expressions
+in this language –
+
+where the evaluation order
+is explicitly specified.
+
+We evaluate the source
+before the target.
+
+Additionally,
+
+if the target expression
+is a pointer dereference,
+
+we must create a memory-WRITE statement
+rather than a COPY statement.
+
+If, at this point,
+
+the code being compiled contains
+address-of expressions,
+
+either the optimizer from episode 2
+did not do its job properly,
+
+or the programmer wants to do
+something weird with local variables.
+
+For now I am not
+going to support that.
+
+Instead, I will have the
+compiler print an error message.
+
+The function call is
+another expression –
+
+that can contain an arbitrary
+number of parameters.
+
+It is compiled in a rather
+straight-forward manner.
+
+Because the C++ standard
+does not contain a transform-iterator —
+
+I know Boost has one,
+
+but I am not going
+to add a dependency —
+
+I created my own which
+you see me using here.
+
+It simplifies the code a bit.
+
+♪♪ Unexpected music ♪♪
+
+Time for a little recap!
+
+In episode 0 we started
+with this code.
+
+In episode 1
+we lexed and parsed it,
+
+and this tree structure
+was produced.
+
+In episode 2 we optimized the tree,
+and it was transformed like this.
+
+And right now –
+
+just we wrote code that converts
+the tree into this code.
+
+Each expression in the tree –
+
+is converted into
+one statement or nothing.
+
+Some of these expressions
+did not produce any statements,
+
+because they convey
+data sources or structure.
+
+And having done that,
+we no longer need the tree.
+
+Or the original code,
+for that matter.
+
+But this is not
+the full truth.
+
+In reality we have
+created a linked list.
+
+Each statement is a node
+in a linked list.
+
+They have a “next” pointer,
+
+that points where
+the next operation is.
+
+The first statement is pointed
+by a table of global labels.
+
+In this example, it is
+the word “append”.
+
+But remember, we had two pointers
+in the statement definition?
+
+It’s true!
+
+They are needed to
+support conditional execution.
+
+Remember, this language had
+three kinds of conditional expressions.
+
+The &&, || and
+the loop expressions.
+
+The && expression gets
+compiled like this.
+
+Each test produces
+an IFNZ statement.
+
+Any test that
+produces zero,
+
+will be directed into a statement
+that sets the result zero.
+
+If a test produces nonzero,
+it will be directed into the next test.
+
+If the last test
+produces nonzero,
+
+it will be directed into a statement
+that sets the result one.
+
+Finally all paths converge
+in a single NOP-statement,
+
+from which the function continues,
+or in this case it ends.
+
+The INIT and NOP nodes are extras
+that did not exist in the original tree.
+
+The || expression
+follows a similar pattern.
+
+In fact,
+
+these two solutions have much
+in common as you can see.
+
+In the AND,
+
+a zero value from a test
+jumps straight into the end,
+
+a nonzero value continues
+to the next test.
+
+In the OR,
+
+a zero value from a test
+continues to the next test,
+
+but a nonzero value jumps
+straight to the end.
+
+The while-loop has
+the same elements:
+
+Two result nodes
+and one end node.
+
+There is now only
+one comparison node.
+
+If the comparison produces nonzero,
+it will branch into the loop body.
+
+The loop body is linked
+back into the comparison.
+
+If the comparison produces zero,
+
+it will branch into a statement
+that sets the result zero,
+
+and then that will lead into
+an end statement.
+
+Technically the INIT and NOP nodes
+are totally redundant in the while-loop,
+
+but using the same mechanism
+for all three branch expressions –
+
+simplifies my code quite a bit,
+
+and the optimizer
+from episode 4 –
+
+will make sure the same result
+is gotten in any case.
+
+So, we will process the loop,
+&& and || expressions.
+
+Every one of them will be run
+through this same process.
+
+They all will have a THEN node
+and an ELSE node,
+
+and an END node which is a NOP.
+
+The most difficult
+part of this –
+
+is in keeping track
+where to place the code.
+
+The target pointer, in the context,
+is a pointer to a pointer:
+
+It points to the location –
+
+where the compiler should
+put the next statement,
+
+and this statement
+itself is a pointer.
+
+So, the context has
+a pointer to a pointer.
+
+Here, the begin is
+a reference to a pointer.
+
+A reference and a pointer
+are basically the same thing –
+
+except a pointer can change,
+while a reference can not.
+
+A reference can
+also never be null.
+
+In many ways therefore,
+
+references are safer
+than pointers.
+
+This is just one of
+the tools C++ provides –
+
+to make safer code –
+
+than languages that
+came before it.
+
+In the main program –
+
+we just print the
+compiled code for now.
+
+The code is printed
+using this Dump function.
+
+We begin printing from the
+entry points of each function,
+
+and see where it leads us,
+
+when we just follow the next-pointer
+from each statement.
+
+But we must also follow the
+cond-pointers for IFNZ statements.
+
+We need some kind of bookkeeping –
+
+of which statements
+we have already printed.
+
+In case multiple statements
+lead into the same target,
+
+we also need labels.
+
+Labels are also used
+for the function entries.
+
+These labels are printed
+as JMP instructions –
+
+that are not real statements.
+
+Let’s try the compiler
+with a sample function.
+
+This is the find-function
+from episode 0.
+
+And this is the IR code
+generated from that tree.
+
+You may notice it is pretty wordy.
+
+In fact, if we generate IR code
+from the unoptimized tree,
+
+as if we went straight
+from episode 1 to episode 3,
+
+the IR code looks
+almost identical!
+
+This is because the source code
+was already pretty tight –
+
+and had no room for
+the kind of optimizations –
+
+detailed in episode 2.
+
+That is not to say that
+it could not be optimized.
+
+In the next episode
+— next two episodes, probably —
+
+we will deal with algorithms
+to optimize the IR code.
+
+On the right you
+can see an example –
+
+of what might be produced
+as a result of these algorithms.
+
+Here is another function.
+
+Again, the IR code generated from
+the optimized and unoptimized trees –
+
+is almost identical,
+
+but careful optimization will
+take this down to almost half.
+
+That is what we will do
+in the next episode.
+
+Redundant store elimination,
+tail call optimization,
+
+jump threading,
+and that sort of things.
+
+There is a lot to do,
+so much in fact –
+
+that I will probably split it
+into two or even three episodes,
+
+after which we will start
+generating actual machine code –
+
+for some real hardware
+and see how it runs.
+
+As always, please leave
+lots of comments –
+
+and ask any questions
+you have in your mind.
+
+I read them all.
+
+Whether the video is new or old,
+I read all your comments,
+
+and usually I reply too.
+
+And do thumbs-up
+or thumbs-down –
+
+to show what you think
+of this video series!
+
+I hope to see you again!
+
+See you again! [In Korean language]

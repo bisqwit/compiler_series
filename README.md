@@ -16,10 +16,17 @@ Episode date: 2017-12-29
 
 Files: `ep1/`
 
-## Episode 2: Rudimentary optimizations
+## Episode 2: AST optimizations
 
 Video link: https://youtu.be/QSPaL4aVjRo  
 Episode date: 2018-01-29  
 
 Files: `ep2/`
+
+## Episode 3: Three-symbol code
+
+Video link: https://youtu.be/fDKfdyDWdE4  
+Episode date: 2018-02-TBA  
+
+Files: `ep3/`
 
