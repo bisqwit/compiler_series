@@ -23,10 +23,22 @@ Episode date: 2018-01-29
 
 Files: `ep2/`
 
-## Episode 3: Three-symbol code
+## Episode 3: Three-address code
 
 Video link: https://youtu.be/fDKfdyDWdE4  
 Episode date: 2018-02-15  
 
 Files: `ep3/`
+
+## Episode 4: TBA
+
+Video link: TBA  
+Episode date: TBA  
+
+Files: `ep4/`
+
+## Episode 5: TBA
+
+Video link: TBA  
+Episode date: TBA  
 
