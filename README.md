@@ -26,7 +26,7 @@ Files: `ep2/`
 ## Episode 3: Three-symbol code
 
 Video link: https://youtu.be/fDKfdyDWdE4  
-Episode date: 2018-02-TBA  
+Episode date: 2018-02-15  
 
 Files: `ep3/`
 
