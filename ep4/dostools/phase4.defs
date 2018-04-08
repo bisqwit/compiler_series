@@ -1,0 +1,159 @@
+<?php
+
+define('IN_FILE', 'conj.cc.lst');
+define('SAVE_FILE', 'conj.y');
+define('SHOW_PLAN',   true);
+define('FINAL_OUTPUT', false);
+
+define('PLAN_SHOW_OUTSIDES', 3); // Max 3 lines outside visible area
+
+define('MAX_LEVEL', 99900);
+define('DEFAULT_SPEED', 'ÿÿ'); // Default speed: 20/16
+define('COMMENT_SPEED', 'ÿÿ'); // 4/16
+
+define('ATFIRST', DELAY1s."ÿÿ\re conj.y\ru");
+define('ATLAST', "ÿÿdconjfin4.y\rÿÿdconj.y\r".DELAY100s."ÿÿx\r\rexit\r\r");
+
+define('FORCE_SPEED', false);
+#define('FORCE_SPEED', 4);
+
+$screens = Array
+(
+  #        textdims  font  double c64
+  1    => ["-".RT."\r".SF1."128 50\r",     128,50, 8,8, 0,0],
+  10   => ["-".RT."\r".SF1."128 50\r",     128,50, 8,8, 0,0, 'reset'=>true],
+  200  => [SF1."120 50\r",                  120,50, 8,8, 0,0],
+  633  => [F2.F2.F2.F2.F2.F2.F2.F2.F2.F2.F4, 122,60, 8,8, 0,0],
+  1000 => [F1.F1.F1.F1.F1.F1.F1.F1.F1.F1.F4, 122,50, 8,8, 0,0],
+  1210 => [SF1."138 60\r",                  138,60, 8,8, 0,0],
+  1320 => [SF1."126 50\r",                  126,50, 8,8, 0,0],
+  1425 => [SF1."134 60\r",                  134,60, 8,8, 0,0],
+);
+
+$line_anchor = Array
+(
+  # Line number to make the first visible line on screen,
+  # relative to the first line that gets edited
+  1 => 0,
+  10 => 30, 13 => 2, 20 => 15, 25 => 17,
+  59 => 3,
+  80 => 33,
+  125 => 15,
+  200 => 43,
+  210 => 0,
+  320 => 5,
+  420 => 3,
+  510 => 4,
+  600 => 24,
+  620 => 21,
+  670 => 12,
+  696 => 40,
+  700 => 8,
+  800 => 47,
+  1010 => 2,
+  1175 => 46,
+  1180 => 0,
+  1189 => 27,
+  1200 => 21,
+  1225 => 26,
+  1250 => 27,
+  1300 => 43,
+  1315 => 2,
+  1471 => 18,
+);
+
+$selections = Array
+(
+  117 => Array(0 => 'params.'),
+  211 => Array(0 => 'Optimize'),
+  255 => Array(0 => 'n_elisions'),
+  261 => Array(0 => ' ReduceNOPchain('),
+  282 => Array(0 => 'counter'),
+  288 => Array(0 => 's->next'),
+  305 => Array(0 => 'n_erased'),
+  322 => Array(0 => 's.second'),
+  335 => Array(0 => 'pending'),
+  341 => Array(0 => 'all_statements.'),
+  342 => Array(0 => ' visited.'),
+  351 => Array(0 => 'size_reduced_by'),
+  415 => Array(0 => 'n_changes'),
+  431 => Array(0 => '->next'),
+  451 => Array(0 => '->next'),
+  506 => Array(0 => 'n_merged'),
+  510 => Array(-1 => 'std::size_t'),
+  515 => Array(0 => 'hash'),
+  522 => Array(0 => ' src.emplace('),
+  531 => Array(0 => 'hashes.c'),
+  538 => Array(0 => 'i->second'),
+  541 => Array(0 => 'i->second'),
+  610 => Array(0 => 'StateType '),
+  616 => Array(0 => '_source'),
+  623 => Array(0 => 'max_register_number'),
+  654 => Array(0 => 'changes'),
+  662 => Array(0 => 'state[regno].'),
+  641 => Array(0 => 'Trace(st, std::move(state), follow_copies, include_ifnz_as_writer)'),
+  1151 => Array(0 => 'const statement* '),
+  1167 => Array(0 => 'chain->'),
+  1170 => Array(0 => 'round'),
+  1180 => Array(0 => '  '), // workaround for a bug?
+  1220 => Array(0 => 'regno'),
+  1255 => Array(0 => 'st->next'),
+  1260 => Array(0 => 'p.params[1].'),
+  1270 => Array(0 => ' entry_points.'),
+  1275 => Array(0 => 'params'),
+  1325 => Array(0 => 'write_insn'),
+  1335 => Array(0 => 'read'),
+  1337 => Array(0 => 'other_writer'),
+  1340 => Array(0 => '->ForAllReadRegs([&](auto regno, auto index)'),
+  1415 => Array(0 => 'copy_insns'),
+  1465 => Array(0 => 'valid_write_insns.'),
+  1475 => Array(0 => 'sources'),
+  1480 => Array(0 => 'copy_source'),
+);
+
+$turbo_ranges = Array
+(
+  # Initial
+  1=>1,
+  125=>1,
+  
+  271=>2, 272=>2, 280=>6, 286=>2, 260=>2, 430=>2, 435=>2, 450=>2, 461=>2, 
+  505=>2, 511=>2, 515=>2, 517=>2, 520=>2, 530=>2, 535=>2, 537=>2, 540=>2,
+  621=>2, 611=>2, 613=>2, 614=>2, 624=>2, 626=>2,
+  631=>2, 634=>2, 637=>2, 640=>2, 
+  648=>1, 649=>1, 652=>2, 653=>2, 
+  672=>1, 673=>1, 676=>2, 681=>1,
+  692=>2, 694=>2, 
+  710=>6, 721=>2,
+  356=>6,
+  
+  1042=>2, 1053=>2, 1135=>2, 1146=>2, 1152=>2,
+  # indenting
+  1176=>3, 1177=>3,1178=>3, 1179=>3, 1180=>70,
+  1184=>3, 1185=>40, 1186=>3, 1187=>3, 1188=>3,
+
+  1208=>2, 1209=>2, 1211=>2, 1225=>2,1227=>2,
+  1251=>2, 1256=>2, 1271=>2, 1281=>2,
+  1320=>2, 1331=>2,
+  
+  1457=>2, 1412=>2, 1401=>2, 1429=>2, 1450=>2, 1452=>2, 1320=>2, 1331=>2, 1351=>2,
+  1461=>2, 1471=>2,
+);
+
+// Delay performed before this number
+$bigdelay = Array(
+  60,
+  80,100,110,120,123,203,
+  300,
+  400,450,460,500,
+  600,615,
+  // Accessinfo::Trace
+  649, 651, 670,680, 690,
+  700,800,
+  1000,1170,
+  1200,1210,1250,
+  1275,
+  1300,1301,
+  1400,
+  1420,
+);

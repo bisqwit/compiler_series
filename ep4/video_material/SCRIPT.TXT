@@ -1,0 +1,492 @@
+[Dia Dhuit! /jiæ ĥůitš/  (j = t+j, ĥ = g:n ja ch:n välimuoto, ů = o/u välimuoto)]
+
+It’s time to do some optimizations.
+By now you have already seen
+the first three episodes of the series,
+so let’s jump straight into the code.
+
+First I am doing some refactoring on the existing code,
+such as utilizing c++17 structured binding statements.
+
+[0:17]
+
+So. First. We need to add some attributes to the statements
+that comprise the intermediate representation of the program.
+
+[0:32]
+
+Unlike what I did in previous episodes, this time I am opting
+for a simpler design and making them
+global static constant compile-time tables.
+
+[0:48]
+
+This simplifies some of my designs a great deal,
+for example this Dump function,
+which can simply now do a table lookup and print that.
+
+[0:54]
+
+I have spoken previously about this topic,
+but much in programming is work towards
+making the work itself easier.
+
+Programming is so much more exciting
+when you can type just a few carefully selected
+concise expressions to accomplish much.
+
+It is even more exciting when you can do
+concise code without sacrificing performance.
+
+This is why I program in C++ and not C or assembler,
+for instance.
+
+And this is the driving motive behind library interfaces
+like the one you see here.
+
+[1:50]
+Now we get to the actual task at hand.
+Optimize.
+  To optimize the code, we call this function, “Optimize”.
+Sounds simple, huh?
+Well of course we must also define what this “Optimize” function should do.
+
+[1:58]
+The Optimize function just calls a number of optimization
+methods in a sequence, looping this process
+until it no longer can find anything to do.
+
+The first optimization method is to delete all code
+that does not accomplish anything.
+NOP statements are an example of such code.
+Deleting a statement is not exactly trivial.
+You have to replace all references to this statement
+with a reference to whatever comes NEXT AFTER this statement.
+It is possible for this process to become stuck
+in an infinite loop,
+for instance if your program has an infinite while-loop
+	[Slide 1, looping NOP chain, bottom 33% of screen]
+where the loop-body is nothing but NOPs.
+
+[2:42]
+In any case, now that we have a mechanism that will take
+care of removing all NOP statement, from now on,
+any time we want to delete a statement from the code,
+just transform that statement into a NOP,
+and this method will take care of deleting it safely.
+
+However, we did not actually delete anything yet.
+The DeleteNOPs function only removes
+the ineffective statements from the chain of statements,
+but the actual statement still remains allocated
+and pointed to in the all_statements list.
+
+[2:51]
+
+This is why we need a second object
+that does garbage collection.
+
+Any statement that can be never executed under any circumstances,
+is garbage.
+It’s just taking space and not accomplishing anything.
+
+The garbage collection function, GC,
+walks through the entire code,
+starting from the entry points of each function,
+and keeps track of which statements it was able to reach
+by only following the next and cond pointers successively.
+
+After no unexplored pointers remain,
+the function deletes all the statements that were never visited.
+This process is repeated until nothing more can be deleted.
+
+[3:51]
+The next two optimization methods
+are called Jump-threading and De-duplication.
+
+Jump-threading is the concept that
+if there is a jump instruction,
+and the target of that jump instruction is another jump instruction,
+the target of the second jump instruction can be copied into
+the target of the first jump instruction.
+
+In my design, there are no separate jump instructions,
+but there are branch instructions.
+	[Overlay slides 2 & 3 in bottom half of screen]
+The same principle applies to them of course,
+but there are more things to match besides the jump target.
+
+[4:23]
+Speaking of branch instructions. If we have a branch instruction
+that comes immediately after an instruction that
+sets the register to some particular value,
+we can deduce at compile time where the branch will go.
+If the value was zero, the code will progress at the next pointer,
+and otherwise it will progress at the cond pointer.
+So we can just change the literal-load instruction
+to point to the corresponding target.
+
+[4:39]
+	[Overlay slide example of such code, in top half of screen]
+While writing these optimizations,
+I thought of another trivial optimization
+which you can see here.
+It’s not exactly jump-threading,
+but I could not think of a better place for it.
+
+[4:50]
+Then, de-duplication.
+Which is to say,
+the merging of identical code.
+	[Slide example, overlay, zoom from center of screen, don't pause code]
+If there exist two statements that are
+completely identical in every manner,
+including the target where they go next,
+all references to the first statement can be
+replaced with references to the second statement
+and the code will still work exactly the same.
+	[pop out, code still runs]
+This can be done by comparing all pairs of statements,
+and finding matches, but it is highly inefficient.
+To speed up the process I created a temporary hashmap.
+There is still the O(N²) comparison,
+but it is now done only to statements that were already
+found to have identical hashes.
+
+[KESKEN]
+Now, let’s test what we have accomplished so far.
+As an example, let’s have this find function
+which searches a string for a character,
+and returns either a boolean value indicating
+whether the character was found.
+And now let’s run the compiler.
+On the left, there is the unoptimized parse tree,
+and next is the optimized parse tree.
+The optimized parse tree is slightly longer,
+but that’s all right.
+Next, is the statement-based representation
+of this function,
+and then the same after optimization.
+
+You can immediately see the optimized code is much shorter.
+How did that happen?
+
+Let’s find examples of the individual transformations.
+
+[L1] Over here you can see a NOP statement was deleted.
+The original code had a few NOPs here and there,
+but the optimized code has none.
+
+Then there are quite a smaller number of branches
+in the optimized code.
+
+And over here you can see an example where a registe
+is set one, and after that immediately a branch follows.
+In the optimized code, no such code exists
+because the branch was inlined.
+The same also happened here: 
+The register was set zero, and the branch was inlined.
+So this statement… is immediately followed by this
+statement, in here, because of the optimization.
+So what we did so far seems to work allright.
+
+[5:51]
+And that’s pretty much everything we can do by
+just looking at individual statements or pairs of statements.
+
+To do better, we must track the lifetime of each variable.
+Variables are the same as registers in my compiler, just so you know.
+	[TODO: Slide 10, top 50% of screen]
+The lifetime of a variable begins from one or more writes,
+and it may include a number of reads.
+Besides that, there can be a number of statements
+that do not interact with the variable in any manner,
+but which could read it, if they wanted.
+
+[6:30]
+This comprehensive map of access information for all variables
+is built in much the same manner as the garbage-collector
+— tracing through the whole program —
+but it is a bit more complex.
+As we trace the program,
+we must keep track of every possible
+register that is accessed in the program,
+and identify where this register was written to.
+This information is saved and possibly updated multiple times,
+until all data has been collected.
+
+There are three possible types of sources for each variable:
+It may be unknown, for example if the variable is erroneously
+read before it’s ever written to.
+It may come from a function parameter.
+Or it may come from a statement that writes to it.
+These three options are identified in the variant source_type.
+
+Commence music!
+	[ Maybe: haruironokougen.mp3 ]
+
+[8:27]
+In some situations it may make sense to keep track of variables
+even if they are copied from a register to another register,
+so I also added an option that makes it possible to do that.
+
+[8:42]
+Additionally, there are some situations
+in which we may utilize the knowledge of whether a branch was taken,
+as a signal that the register that the IFNZ statement tested,
+had a particular value.
+
+[9:02]
+[TODO: Explanation for the GenerateAccessInfo function]
+
+[9:16]
+Now how do we utilize the access information?
+The possibilities are endless!
+To begin with, remember the code that deletes instructions
+that do not accomplish anything?
+The routine that deletes NOPs and that sort of things.
+Well, by utilizing the access information,
+we can now add to the list of deleted statements,
+those statements which write to a register that is never read thereafter.
+This is called dead store elimination.
+Writing something that is never read by anyone, is called a dead store.
+We eliminate dead stores by deleting statements
+that write into a register
+that will be never read before it gets overwritten.
+
+[9:41]
+But this was just the start of it!
+we can also do to this representation of the code.
+
+It was easier in episode 2 than it is now,
+but it is more rewarding here than it was back then.
+
+The idea is the same:
+If the parameters to an operator,
+such as a negate or an add,
+have constant values,
+the mathematical operation can be deleted
+and replaced with a statement that just loads the result.
+
+But the tricky part is this:
+The statements do not have number parameters.
+They only have register parameters!
+To figure out which values there are in those registers,
+and whether the values are constants to begin with,
+we need to do some analysis.
+This function, GetLiteral,
+will return a constant value,
+or it will return nothing.
+
+In C++17 you can convey this kind of situation
+with std::optional:
+std::optional<long> means that either this variable contains a long integer value,
+or it contains nothing.
+When it contains nothing,
+it does not mean that it has some implausible value.
+Nor that it contains a null pointer.
+It literally means it does not contain an integer value at all.
+Behind the scenes it might be implemented
+as a pair of long integer and a boolean flag,
+but we don’t need to care about that.
+It’s perfect for our purposes.
+[10:38]
+We check all possible sources for the value in this register
+at this moment, and see what those sources are.
+The source can be a function parameter or it can be a statement.
+If it’s an INIT statement with a number literal, we take that.
+If the return value has already been set
+and this value differs from the return value,
+we return nothing.
+In other words, either all sources agree on a single integer value, or we have nothing.
+[10:56]
+Oh by the way. IFNZ statements can be sources of integer values too,
+even though they write into nothing.
+If one can reach the target statement from the IFNZ’s no-branch
+but not from its yes-branch, the value was definitely zero,
+and vice versa.
+[11:13]
+So how to figure out whether some statement can be reached from some other statement?
+Basically the same way we did garbage collection earlier.
+It’s almost the same, except now the process only begins
+from the source statement and not from all function entries.
+The function does not need to be perfect.
+We are not solving the halting problem here.
+If it gives false positives, it does not matter.
+What matters is it must not give false negatives,
+so it must discover all possible paths
+from point A to point B.
+Paths that hit point A a second time
+before hitting point B are excempt,
+so we don’t need to worry about e.g. loops or recursion.
+
+[11:40]
+There are situations where it is *useful* that IFNZ statements
+are treated as value sources,
+and situations where it is actually harmful.
+So we run this process twice,
+first without IFNZ statements
+and then with IFNZ statements.
+
+[11:53]
+So let’s continue.
+Besides NEG and ADD, we can deal with literal values in the EQ statement.
+
+[12:07]
+Or, the IFNZ statement.
+If we know the source register contains a constant value,
+we can replace the IFNZ with a NOP and just hardcode the target.
+
+[12:22]
+The INIT statement is used for initializing a register with a number constant,
+or with a reference to a global variable/function, or both.
+
+If, at the point of the INIT statement,
+there exists some other register
+that already contains that same value,
+we can replace the INIT statement with a COPY.
+To do that, we walk through all registers that are alive
+at the point of that instruction,
+and check if that register already contains the desired value.
+
+This optimization is a form of common subexpression elimination,
+a very important optimization technique
+in compilers in general.
+
+It may seem like a non-optimization,
+since it just replaces an instruction with another instruction,
+but we will get back to this topic later.
+Chances are the COPY instructions can be removed alltogether.
+
+[12:54]
+Next, tail call elimination.
+A tail call is any situation where a function call is immediately followed by a function exit. 
+
+In terms of my compiler, this would be a FCALL statement followed by a RET statement,
+with the added restriction
+that the register number consumed by the RET statement
+must be the same register number that the FCALL produced,
+and the function pointer consumed by the FCALL must be
+predictable and must point to a single known function.
+For identifying the source,
+this code uses the std::optional
+just like before with the literals.
+[13:20]
+So, a tail call opportunity was identified.
+In this situation,
+the FCALL statements is replaced with a NOP
+in order to get a single next-pointer that we can later replace.
+After the NOP statements,
+we may need to add some COPY statements
+to shuffle the parameter registers into the right order,
+[13:44]
+and finally the last statement is linked
+to the beginning of the target function.
+[13:47]
+This is an illustration of how the tail call optimization works.
+
+It may look like a pessimization at first glance,
+but the INIT statement that loads the function pointer
+will be deleted by dead code elimination,
+as will the NOP statement,
+leaving only the COPY statements.
+And we are about to address that right now.
+
+[13:50]
+Now there have been several optimizations so far that produce new COPY statements.
+There is a time and place for COPY statements,
+but most of the time,
+they don’t actually accomplish anything meaningful.
+They just transfer data from a register to another.
+It’s like printing an e-mail.
+You make redundant copies.
+
+It is time to look into ways that
+we can elide redundant copies.
+
+This is called copy elision,
+and it is surprisingly tricky.
+
+The fundamental idea is this:
+If the register,
+that some statement reads,
+was created by a COPY statement,
+change the parameter of that statement
+into the COPY statement’s source.
+
+In other words, get the value directly from the source
+rather than using its copy.
+
+A noble idea! Unfortunately there are myriad ways
+that this can go wrong.
+Not only must the source to the COPY statement
+be still accessible at the moment the second statement
+is executed,
+there must be no other statements that can be sources
+of the target register at the point of the second statement,
+except other COPY statements which are fine,
+as long as they all have the same sources
+which are all still accessible at the point of the second statement.
+
+[14:49]
+But there is also another way at optimizing COPY statements,
+and that is from the point of the source statement.
+If the register,
+that some statement generates,
+is only read by a COPY statement,
+the statement could write directly into the register
+that the COPY statement writes into.
+
+	[Music: ff4batl-raw2.wav]
+
+And this method has even more caveats
+than the previous method had!
+
+I am at a loss to even describe the process
+of taking care of all those conditions in
+an insightful way,
+so I will just let the code roll.
+
+[16:30]
+
+	[Music: ff5batlw.mid]
+
+And it’s finished.
+Time to check the results.
+
+	[Flashback]
+Remember the find function from earlier?
+	[Fade into today picture]
+This is what it becomes as a result of the new optimizations.
+It’s pretty short now!
+There are no COPY statements anywhere in it.
+Even the recursion was converted into a tailcall.
+	[Length & stpcpyn]
+Here is another example. 
+
+You can see the optimized code is dramatically shorter.
+
+Optimization is art. As long as the optimized
+and unoptimized code accomplish the exact same
+output for the same input,
+there is no right and wrong.
+
+However, as a general principle,
+there are two distinct categories of optimization.
+Optimizing for size, and optimizing for speed.
+Often the optimizer can accomplish both,
+but for some optimizations
+one needs to choose
+between smaller code that is slower,
+and faster code that is larger.
+
+There are still a few tricks I want to do
+before we get to the final step of the compiler
+— code generation for the target machine,
+so stay tuned, more is coming.
+
+	[Thank you! May you have good things!]
+	[Go raibh maith agat! /gora‘mahəgət/]
+
+	[Good bye! Be safe!]
+	[Slán! /slan/ (erittäin taka-a)]

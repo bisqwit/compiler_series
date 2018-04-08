@@ -30,9 +30,9 @@ Episode date: 2018-02-15
 
 Files: `ep3/`
 
-## Episode 4: TBA
+## Episode 4: Optimizing IR
 
-Video link: TBA  
+Video link: https://youtu.be/wdOpIIzxiNA  
 Episode date: TBA  
 
 Files: `ep4/`
