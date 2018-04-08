@@ -1,0 +1,109 @@
+<?php
+
+define('IN_FILE', 'conj.cc.lst');
+define('SAVE_FILE', 'conj.y');
+define('SHOW_PLAN',   true);
+define('FINAL_OUTPUT', false);
+
+define('PLAN_SHOW_OUTSIDES', 3); // Max 3 lines outside visible area
+
+define('MAX_LEVEL', 99900);
+define('DEFAULT_SPEED', 'ÿÿ'); // Default speed: 20/16
+define('COMMENT_SPEED', 'ÿÿ'); // 3/16
+
+define('ATFIRST', DELAY1s."ÿÿ\re\run"); // Begin new file
+define('ATLAST', "ÿÿdconjfin3.y\rÿÿdconj.y\r".DELAY100s."ÿÿx\r\rexit\r\r");
+
+define('FORCE_SPEED', false);
+#define('FORCE_SPEED', 4);
+
+$screens = Array
+(
+  #        textdims  font  double c64
+  1    => ["-".RT."\r".SF1."134 50\r",  134,50, 8,8, 0,0],
+
+  2    => ["ÿÿomodel2.dat\rvu".
+           "-".RT."\r".SF1."134 50\r",  134,50, 8,8, 0,0, 'reset'=>true],
+
+  500  => [F2.F2.F2.F3.F2.F2.F2.F2.F3.F2.F2.F2, 130,60, 8,8, 0,0],
+  520 => ["-".RT."\r".F3.F3.F3.F3, 122,40,   8,12, 0,0],
+  
+  600  => ["".DN.DN.DN.DN."\r".F2.F2.F2.F2.F2.F2.F2.F2.F2.F2,
+                                          122,50, 8,8, 0,0],
+);
+
+$line_anchor = Array
+(
+  # Line number to make the first visible line on screen,
+  # relative to the first line that gets edited
+  1 => 0, 2 => 6, 3 => 8, 7 => 8, 6 => 13, 8 => 9,
+  25 => 4,
+  140 => 31, 172 => 32,
+  200 => 17,
+  400 => 20,
+  426 => 43,
+  439 => 11,
+  490 => 34,
+  500 => 38,
+  515 => 5,
+  530 => 24,
+  550 => 8,
+  550 => 18,
+  570 => 11,
+  600 => 38,
+  700 => 19,
+  720 => 8,
+);
+
+$selections = Array
+(
+  10 => Array(1 => '#include '),
+  20 => Array(1 => 'ENUM_STATEMENTS(o)'),
+  28 => Array(0 => 'st_type'),
+  40 => Array(1 => 'template<typename'),
+  41 => Array(0 => 'terator'),
+  101 => Array(0 => 'st_type'),
+  104 => Array(0 => 'reg_type'),
+  120 => Array(1 => 'type'),
+  160 => Array(0 => ', class=forbid_t<st_type,'),
+  220 => Array(0 => 'string'),
+  240 => Array(0 => '.size()'),
+  311 => Array(0 => 'statement'),
+  426 => Array(0 => 'CompileFunction(f)'),
+  432 => Array(0 => 'function'),
+  445 => Array(0 => 'statement::reg_type'),
+  455 => Array(0 => 'ctx.'),
+  490 => Array(1 => 'case ex_type::'),
+  496 => Array(0 => 'code.params.'),
+  497 => Array(0 => 'result'),
+  511 => Array(0 => 'code.params.'),
+  530 => Array(0 => 'param'),
+  531 => Array(0 => 'code.params.'),
+  532 => Array(0 => 'transform_iterator'),
+  550 => Array(0 => 'case ex_type::'),
+  565 => Array(0 => ' is_and'),
+  575 => Array(0 => 'ctx.tgt'),
+  580 => Array(0 => '= code.params.'),
+  710 => Array(0 => 'remaining_statements'),
+  730 => Array(0 => 'chain'),
+  760 => Array(1 => 'label'),
+  766 => Array(0 => 'statistics'),
+  771 => Array(0 => 'stats'),
+  782 => Array(0 => 'needs_jmp'),
+  790 => Array(0 => 'branch_stats'),
+);
+
+$turbo_ranges = Array
+(
+  # Initial
+  1=>8,2=>8,3=>8,4=>8,5=>8,6=>8,7=>8,8=>8,9=>8
+);
+
+// Delay performed before this number
+$bigdelay = Array(
+  30,31,32,33,34,35,36,37,38,39,50,
+  170,
+  200,400,
+  500,550,600,
+  700,
+);

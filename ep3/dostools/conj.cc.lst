@@ -1,0 +1,1112 @@
+1	%skeleton "lalr1.cc"
+1	%define parser_class_name {conj_parser}
+1	%define api.token.constructor
+1	%define api.value.type variant
+1	%define parse.assert
+1	%define parse.error verbose
+1`2	%locations`0:   // <--
+1	
+1	%code requires
+1	{
+1	#include <map>
+1	#include <list>
+1	#include <vector>
+1	#include <string>
+1	#include <iostream>
+1	#include <algorithm>
+1	
+1	#define ENUM_IDENTIFIERS(o) \
+1	        o(undefined)                              /* undefined */ \
+1	        o(function)                               /* a pointer to given function */ \
+1	        o(parameter)                              /* one of the function params */ \
+1	        o(variable)                               /* a local variable */
+1	#define o(n) n,
+1	enum class id_type {  ENUM_IDENTIFIERS(o) };
+1	#undef o
+1	
+1	struct identifier
+1	{
+1	    id_type type  = id_type::undefined;
+1	    std::size_t     index = 0; // function#, parameter# within surrounding function, variable#
+1	    std::string     name;
+1	};
+1	
+1	#define ENUM_EXPRESSIONS(o) \
+1	        o(nop) o(string) o(number) o(ident)       /* atoms */ \
+1	        o(add) o(neg) o(eq)                       /* transformation */ \
+1	        o(cor) o(cand) o(loop)                    /* logic. Loop is: while(param0) { param1..n } */ \
+1	        o(addrof) o(deref)                        /* pointer handling */ \
+1	        o(fcall)                                  /* function param0 call with param1..n */ \
+1	        o(copy)                                   /* assign: param1 <<- param0 */ \
+1	        o(comma)                                  /* a sequence of expressions */ \
+1	        o(ret)                                    /* return(param0) */
+1	
+1	#define o(n) n,
+1	enum class ex_type {  ENUM_EXPRESSIONS(o) };
+1	#undef o
+1	
+1	typedef std::list<struct expression> expr_vec;
+1	struct expression
+1	{
+1	    ex_type type;
+1	    identifier      ident{};    // For ident
+1	    std::string     strvalue{}; // For string
+1	    long            numvalue=0; // For number
+1	    expr_vec        params;
+1	    // For while() and if(), the first item is the condition and the rest are the contingent code
+1	    // For fcall, the first parameter is the variable to use as function
+1	
+1	    template<typename... T>
+1	    expression(ex_type t, T&&... args) : type(t), params{ std::forward<T>(args)... } {}
+1	
+1	    expression()                    : type(ex_type::nop) {}
+1	    expression(const identifier& i) : type(ex_type::ident),  ident(i)            { }
+1	    expression(identifier&& i)      : type(ex_type::ident),  ident(std::move(i)) { }
+1	    expression(std::string&& s)     : type(ex_type::string), strvalue(std::move(s)) { }
+1	    expression(long v)              : type(ex_type::number), numvalue(v) {}
+1	
+1	    bool is_pure() const;
+1	    bool is_compiletime_expr() const;
+1	
+1	    expression operator%=(expression&& b) && { return expression(ex_type::copy, std::move(b), std::move(*this)); }
+1	};
+1	
+1	#define o(n) \
+1	inline bool is_##n(const identifier& i) { return i.type == id_type::n; }
+1	ENUM_IDENTIFIERS(o)
+1	#undef o
+1	
+1	#define o(n) \
+1	inline bool is_##n(const expression& e) { return e.type == ex_type::n; } \
+1	template<typename... T> \
+1	inline expression e_##n(T&&... args) { return expression(ex_type::n, std::forward<T>(args)...); }
+1	ENUM_EXPRESSIONS(o)
+1	#undef o
+1	
+1	struct function
+1	{
+1	    std::string name;
+1	    expression  code;
+1	    unsigned num_vars = 0,     num_params = 0;
+1	    bool     pure     = false, pure_known = false;
+1	
+1	    expression maketemp() { expression r(identifier{id_type::variable, num_vars, "$C" + std::to_string(num_vars)}); ++num_vars; return r; }
+1	};
+1	
+1	struct lexcontext;
+1	
+1	}//%code requires
+1	
+1	%param { lexcontext& ctx }//%param
+1	
+1	%code
+1	{
+1	
+1	struct lexcontext
+1	{
+1	    const char* cursor;
+1	    yy::location loc;
+1	    std::vector<std::map<std::string, identifier>> scopes;
+1	    std::vector<function> func_list;
+1	    unsigned tempcounter = 0;
+1	    function fun;
+1	public:
+1	    const identifier& define(const std::string& name, identifier&& f)
+1	    {
+1	        auto r = scopes.back().emplace(name, std::move(f));
+1	        if(!r.second) throw yy::conj_parser::syntax_error(loc, "Duplicate definition <"+name+">");
+1	        return r.first->second;
+1	    }
+1	    expression def(const std::string& name)     { return define(name, identifier{id_type::variable,  fun.num_vars++,   name}); }
+1	    expression defun(const std::string& name)   { return define(name, identifier{id_type::function,  func_list.size(), name}); }
+1	    expression defparm(const std::string& name) { return define(name, identifier{id_type::parameter, fun.num_params++, name}); }
+1	    expression temp()                           { return def("$I" + std::to_string(tempcounter++)); }
+1	    expression use(const std::string& name)
+1	    {
+1	        for(auto j = scopes.crbegin(); j != scopes.crend(); ++j)
+1	            if(auto i = j->find(name); i != j->end())
+1	                return i->second;
+1	        throw yy::conj_parser::syntax_error(loc, "Undefined identifier <"+name+">");
+1	    }
+1	    void add_function(std::string&& name, expression&& code)
+1	    {
+1	        fun.code = e_comma(std::move(code), e_ret(0l)); // Add implicit "return 0;" at the end
+1	        fun.name = std::move(name);
+1	        func_list.push_back(std::move(fun));
+1	        fun = {};
+1	    }
+1	    void operator ++() { scopes.emplace_back(); } // Enter scope
+1	    void operator --() { scopes.pop_back();     } // Exit scope
+1	};
+1	
+1	namespace yy { conj_parser::symbol_type yylex(lexcontext& ctx); }
+1	
+1	#define M(x) std::move(x)
+1	#define C(x) expression(x)
+1	
+1	}//%code
+1	
+1	%token             END 0
+1	%token             RETURN "return" WHILE "while" IF "if" VAR "var" IDENTIFIER NUMCONST STRINGCONST
+1	%token             OR "||"  AND "&&"  EQ "=="  NE "!="  PP "++"  MM "--"  PL_EQ "+="  MI_EQ "-="
+1	%left  ','
+1	%right '?' ':' '=' "+=" "-="
+1	%left  "||"
+1	%left  "&&"
+1	%left  "==" "!="
+1	%left  '+' '-'
+1	%left  '*'
+1	%right '&' "++" "--"
+1	%left  '(' '['
+1	%type<long>        NUMCONST
+1	%type<std::string> IDENTIFIER STRINGCONST identifier1
+1	%type<expression>  expr expr1 exprs exprs1 c_expr1 p_expr1 stmt stmt1 var_defs var_def1 com_stmt
+1	%%
+1	
+1	library:                        { ++ctx; } functions { --ctx; };
+1	functions:                      functions identifier1 { ctx.defun($2); ++ctx; } paramdecls colon1 stmt1 { ctx.add_function(M($2), M($6)); --ctx; }
+1	|                               %empty;
+1	paramdecls:                     paramdecl | %empty;
+1	paramdecl:                      paramdecl ',' identifier1   { ctx.defparm($3); }
+1	|                               IDENTIFIER                  { ctx.defparm($1); };
+1	identifier1:        error{}   | IDENTIFIER                  { $$ = M($1); };
+1	colon1:             error{}   | ':';
+1	semicolon1:         error{}   | ';';
+1	cl_brace1:          error{}   | '}';
+1	cl_bracket1:        error{}   | ']';
+1	cl_parens1:         error{}   | ')';
+1	stmt1:              error{}   | stmt                        { $$ = M($1); };
+1	exprs1:             error{}   | exprs                       { $$ = M($1); };
+1	expr1:              error{}   | expr                        { $$ = M($1); };
+1	p_expr1:            error{}   | '(' exprs1 cl_parens1       { $$ = M($2); };
+1	stmt:                           com_stmt         cl_brace1  { $$ = M($1); --ctx; }
+1	|                               "if"     p_expr1 stmt1      { $$ = e_cand(M($2), M($3)); }
+1	|                               "while"  p_expr1 stmt1      { $$ = e_loop(M($2), M($3)); }
+1	|                               "return" exprs1  semicolon1 { $$ = e_ret(M($2));         }
+1	|                               exprs            semicolon1 { $$ = M($1);        }
+1	|                               ';'                         { };
+1	com_stmt:                       '{'                         { $$ = e_comma(); ++ctx; }
+1	|                               com_stmt stmt               { $$ = M($1); $$.params.push_back(M($2)); };
+1	var_defs:                       "var"           var_def1    { $$ = e_comma(M($2)); }
+1	|                               var_defs    ',' var_def1    { $$ = M($1); $$.params.push_back(M($3)); };
+1	var_def1:                       identifier1 '=' expr1       { $$ = ctx.def($1) %= M($3); }
+1	|                               identifier1                 { $$ = ctx.def($1) %= 0l; };
+1	exprs:                          var_defs                    { $$ = M($1); }
+1	|                               expr                        { $$ = M($1); }
+1	|                               expr    ',' c_expr1         { $$ = e_comma(M($1)); $$.params.splice($$.params.end(), M($3.params)); };
+1	c_expr1:                        expr1                       { $$ = e_comma(M($1)); }
+1	|                               c_expr1 ',' expr1           { $$ = M($1); $$.params.push_back(M($3)); };
+1	expr:                           NUMCONST                    { $$ = $1;    }
+1	|                               STRINGCONST                 { $$ = M($1); }
+1	|                               IDENTIFIER                  { $$ = ctx.use($1);   };
+1	|                               '(' exprs1 cl_parens1       { $$ = M($2); }
+1	|                               expr '[' exprs1 cl_bracket1 { $$ = e_deref(e_add(M($1), M($3))); }
+1	|                               expr '(' ')'                { $$ = e_fcall(M($1)); }
+1	|                               expr '(' c_expr1 cl_parens1 { $$ = e_fcall(M($1)); $$.params.splice($$.params.end(), M($3.params)); }
+1	| expr '='  error {$$=M($1);} | expr '='  expr              { $$ = M($1) %= M($3); }
+1	| expr '+'  error {$$=M($1);} | expr '+'  expr              { $$ = e_add( M($1), M($3)); }
+1	| expr '-'  error {$$=M($1);} | expr '-'  expr   %prec '+'  { $$ = e_add( M($1), e_neg(M($3))); }
+1	| expr "+=" error {$$=M($1);} | expr "+=" expr              { if(!$3.is_pure()) { $$ = ctx.temp() %= e_addrof(M($1)); $1 = e_deref($$.params.back()); }
+1	                                                              $$ = e_comma(M($$), M($1) %= e_add(C($1), M($3))); }
+1	
+1	| expr "-=" error {$$=M($1);} | expr "-=" expr              { if(!$3.is_pure()) { $$ = ctx.temp() %= e_addrof(M($1)); $1 = e_deref($$.params.back()); }
+1	                                                              $$ = e_comma(M($$), M($1) %= e_add(C($1), e_neg(M($3)))); }
+1	
+1	| "++" error {}               | "++" expr                   { if(!$2.is_pure()) { $$ = ctx.temp() %= e_addrof(M($2)); $2 = e_deref($$.params.back()); }
+1	                                                              $$ = e_comma(M($$), M($2) %= e_add(C($2),  1l)); }
+1	
+1	| "--" error {}               | "--" expr        %prec "++" { if(!$2.is_pure()) { $$ = ctx.temp() %= e_addrof(M($2)); $2 = e_deref($$.params.back()); }
+1	                                                              $$ = e_comma(M($$), M($2) %= e_add(C($2), -1l)); }
+1	
+1	|                               expr "++"                   { if(!$1.is_pure()) { $$ = ctx.temp() %= e_addrof(M($1)); $1 = e_deref($$.params.back()); }
+1	                                                              auto i = ctx.temp(); $$ = e_comma(M($$), C(i) %= C($1), C($1) %= e_add(C($1),  1l), C(i)); }
+1	
+1	|                               expr "--"        %prec "++" { if(!$1.is_pure()) { $$ = ctx.temp() %= e_addrof(M($1)); $1 = e_deref($$.params.back()); }
+1	                                                              auto i = ctx.temp(); $$ = e_comma(M($$), C(i) %= C($1), C($1) %= e_add(C($1), -1l), C(i)); }
+1	
+1	| expr "||" error {$$=M($1);} | expr "||" expr              { $$ = e_cor( M($1), M($3)); }
+1	| expr "&&" error {$$=M($1);} | expr "&&" expr              { $$ = e_cand(M($1), M($3)); }
+1	| expr "==" error {$$=M($1);} | expr "==" expr              { $$ = e_eq(  M($1), M($3)); }
+1	| expr "!=" error {$$=M($1);} | expr "!=" expr   %prec "==" { $$ = e_eq(e_eq(M($1), M($3)), 0l); }
+1	| '&' error{}                 | '&' expr                    { $$ = e_addrof(M($2)); }
+1	| '*' error{}                 | '*' expr         %prec '&'  { $$ = e_deref(M($2));  }
+1	| '-' error{}                 | '-' expr         %prec '&'  { $$ = e_neg(M($2));    }
+1	| '!' error{}                 | '!' expr         %prec '&'  { $$ = e_eq(M($2), 0l); }
+1	| expr '?'  error {$$=M($1);} | expr '?' expr ':' expr      { auto i = ctx.temp();
+1	                                                              $$ = e_comma(e_cor(e_cand(M($1), e_comma(C(i) %= M($3), 1l)), C(i) %= M($5)), C(i)); }
+1	
+1	%%
+1	
+1	yy::conj_parser::symbol_type yy::yylex(lexcontext& ctx)
+1	{
+1	    const char* anchor = ctx.cursor;
+1	    ctx.loc.step();
+1	    auto s = [&](auto func, auto&&... params) { ctx.loc.columns(ctx.cursor - anchor); return func(params..., ctx.loc); };
+1	%{ /* Begin re2c lexer */
+1	re2c:yyfill:enable   = 0;
+1	re2c:define:YYCTYPE  = "char";
+1	re2c:define:YYCURSOR = "ctx.cursor";
+1	
+1	// Keywords:
+1	"return"                { return s(conj_parser::make_RETURN); }
+1	"while" | "for"         { return s(conj_parser::make_WHILE); }
+1	"var"                   { return s(conj_parser::make_VAR); }
+1	"if"                    { return s(conj_parser::make_IF); }
+1	
+1	// Identifiers:
+1	[a-zA-Z_] [a-zA-Z_0-9]* { return s(conj_parser::make_IDENTIFIER, std::string(anchor,ctx.cursor)); }
+1	
+1	// String and integer literals:
+1	"\"" [^"]* "\""         { return s(conj_parser::make_STRINGCONST, std::string(anchor+1, ctx.cursor-1)); }
+1	[0-9]+                  { return s(conj_parser::make_NUMCONST, std::stol(std::string(anchor,ctx.cursor))); }
+1	
+1	// Whitespace and comments:
+1	"\000"                  { return s(conj_parser::make_END); }
+1	"\r\n" | [\r\n]         { ctx.loc.lines();   return yylex(ctx); }
+1	"//" [^\r\n]*           {                    return yylex(ctx); }
+1	[\t\v\b\f ]             { ctx.loc.columns(); return yylex(ctx); }
+1	
+1	// Multi-char operators and any other character (either an operator or an invalid symbol):
+1	"&&"                    { return s(conj_parser::make_AND); }
+1	"||"                    { return s(conj_parser::make_OR); }
+1	"++"                    { return s(conj_parser::make_PP); }
+1	"--"                    { return s(conj_parser::make_MM); }
+1	"!="                    { return s(conj_parser::make_NE); }
+1	"=="                    { return s(conj_parser::make_EQ); }
+1	"+="                    { return s(conj_parser::make_PL_EQ); }
+1	"-="                    { return s(conj_parser::make_MI_EQ); }
+1	.                       { return s([](auto...s){return conj_parser::symbol_type(s...);}, conj_parser::token_type(ctx.cursor[-1]&0xFF)); } // Return that character
+1	%} /* End lexer */
+1	}
+1	
+1	void yy::conj_parser::error(const location_type& l, const std::string& m)
+1	{
+1	    std::cerr << (l.begin.filename ? l.begin.filename->c_str() : "(undefined)");
+1	    std::cerr << ':' << l.begin.line << ':' << l.begin.column << '-' << l.end.column << ": " << m << '\n';
+1	}
+1	
+1	#include <fstream>
+1	#include <memory>
+1	#include <unordered_map>
+1	#include <functional>
+1	#include <numeric>
+1	#include <set>
+1	
+1	/* GLOBAL DATA */
+1	std::vector<function> func_list;
+1	
+1	// pure_fcall tells whether the given fcall expression refers
+1	//            to a function that is known to have no side effects,
+1	//            i.e. its only outcome is the return value.
+1	static bool pure_fcall(const expression& exp)
+1	{
+1	    // Identify the called function. Note that that the function
+1	    // may be any arbitrary expression, not only a function identifier.
+1	    if(const auto& p = exp.params.front(); is_ident(p) && is_function(p.ident))
+1	        if(auto called_function = p.ident.index; called_function < func_list.size())
+1	            if(const auto& f = func_list[called_function]; f.pure_known && f.pure)
+1	                return true;
+1	    return false;
+1	}
+1	
+1	// is_pure tells whether the expression is safe to duplicate,
+1	// or even delete if the return value is not used,
+1	// without changing the program semantics.
+1	bool expression::is_pure() const
+1	{
+1	    // if any parameter is not pure, the expression is not pure
+1	    for(const auto& e: params) if(!e.is_pure()) return false;
+1	    switch(type)
+1	    {
+1	        // Function calls are judged using a lookup.
+1	        case ex_type::fcall: return pure_fcall(*this);
+1	        // Assigns are not pure.
+1	        case ex_type::copy:  return false;
+1	        // Returns and not pure either, because they do not evaluate into a value.
+1	        case ex_type::ret:   return false;
+1	        // Loops are not pure, because they may be infinite,
+1	        // in which case deleting the loop would alter the program behavior.
+1	        case ex_type::loop:  return false;
+1	        // Anything else is pure
+1	        default:             return true;
+1	    }
+1	}
+1	
+1	bool expression::is_compiletime_expr() const
+1	{
+1	    for(const auto& e: params) if(!e.is_compiletime_expr()) return false;
+1	    switch(type)
+1	    {
+1	        case ex_type::number: case ex_type::string:
+1	        case ex_type::add:    case ex_type::neg:    case ex_type::cand:  case ex_type::cor:
+1	        case ex_type::comma:  case ex_type::nop:
+1	            return true;
+1	        case ex_type::ident:
+1	            return is_function(ident);
+1	        default:
+1	            return false;
+1	    }
+1	}
+1	
+1	// callv: Invokes the functor with args.
+1	// Returns its return value, except, if func returns void, callv() returns def instead.
+1	template<typename F, typename B, typename... A>
+1	static decltype(auto) callv(F&& func, B&& def, A&&... args)
+1	{
+1	    if constexpr(std::is_invocable_r_v<B,F,A...>) { return std::forward<F>(func)(std::forward<A>(args)...); }
+1	    else                                          { static_assert(std::is_void_v<std::invoke_result_t<F,A...>>);
+1	                                                    std::forward<F>(func)(std::forward<A>(args)...); return std::forward<B>(def); }
+1	}
+1	
+1	// for_all_expr() executes the given callbacks on all sub-expressions of the given expression
+1	// (but not on itself). The first param can be: function&, expression&, const expression&.
+1	// The provided callbacks will be executed sequentially. Recursion is depth-first.
+1	// If a callback returns false, the rest of following callbacks will not be executed for that expression.
+1	// If all callbacks return true, testing ends immediately and for_all_expr returns true.
+1	// If a callback returns void, it is treated as if it returned false.
+1	template<typename E, typename... F>
+1	static bool for_all_expr(E& p, bool inclusive, F&&... funcs)
+1	{
+1	    static_assert(std::conjunction_v<std::is_invocable<F,expression&>...>);
+1	    return std::any_of(p.params.begin(), p.params.end(), [&](E& e) { return for_all_expr(e, true, funcs...); })
+1	         || (inclusive && ... && callv(funcs,false,p));
+1	}
+1	
+1	static void FindPureFunctions()
+1	{
+1	    // Reset the information
+1	    for(auto& f: func_list) f.pure_known = f.pure = false;
+1	    // Loop until the algorithm can't find new functions to identify as pure/impure
+1	    do {} while(std::count_if(func_list.begin(), func_list.end(), [&](function& f)
+1	    {
+1	        if(f.pure_known) return false;
+1`3	        `0://`01:std::cerr << "Identifying " << f.name << '\n';
+1	
+1	        // The function has side-effects, if there is _any_ pointer dereference
+1	        // in the LHS side of an assign operator, or if the function calls
+1	        // some other function that is known to have side-effects.
+1	        bool unknown_functions = false;
+1	        bool side_effects      = for_all_expr(f.code, true, [&](const expression& exp)
+1	        {
+1	            if(is_copy(exp)) { return for_all_expr(exp.params.back(), true, is_deref); }
+1	            if(is_fcall(exp))
+1	            {
+1	                const auto& e = exp.params.front();
+1	                // Indirect function calls are always considered impure
+1	                if(!e.is_compiletime_expr()) return true;
+1	                // Identify the function that was called
+1	                const auto& u = func_list[e.ident.index];
+1	                if(u.pure_known && !u.pure) return true; // An impure function called
+1`4	                if(!u.pure_known && e.ident.index != `1:std::size_t`01:(&f - &func_list[0])) // Recursion is ignored
+1	                {
+1	                    std::cerr << "Function " << f.name << " calls unknown function " << u.name << '\n';
+1	                    unknown_functions = true; // An unknown function called
+1	                }
+1	            }
+1	            return false;
+1	        });
+1	        // If found side-effects, mark impure. If nothing of that sort was found
+1	        // and all called functions were known pure, mark this function also pure.
+1	        if(side_effects || !unknown_functions)
+1	        {
+1	            f.pure_known = true;
+1	            f.pure       = !side_effects;
+1`5	            `1://`01:std::cerr << "Function " << f.name << (f.pure ? " is pure\n" : " may have side-effects\n");
+1	            return true; // improvements found; restart the do-while loop
+1	        }
+1	        return false;
+1	    }));
+1	    for(auto& f: func_list)
+1	        if(!f.pure_known)
+1	            std::cerr << "Could not figure out whether " << f.name << " is a pure function\n";
+1	}
+1	
+1	std::string stringify(const expression& e, bool stmt);
+1	std::string stringify_op(const expression& e, const char* sep, const char* delim, bool stmt = false, unsigned first=0, unsigned limit=~0u)
+1	{
+1	    std::string result(1, delim[0]);
+1	    const char* fsep = "";
+1	    for(const auto& p: e.params) { if(first) { --first; continue; }
+1	                                   if(!limit--) break;
+1	                                   result += fsep; fsep = sep; result += stringify(p, stmt); }
+1	    if(stmt) result += sep;
+1	    result += delim[1];
+1	    return result;
+1	}
+1	std::string stringify(const expression& e, bool stmt = false)
+1	{
+1	    auto expect1 = [&]{ return e.params.empty() ? "?" : e.params.size()==1 ? stringify(e.params.front()) : stringify_op(e, "??", "()"); };
+1	    switch(e.type)
+1	    {
+1	        // atoms
+1	        case ex_type::nop    : return "";
+1	        case ex_type::string : return "\"" + e.strvalue + "\"";
+1	        case ex_type::number : return std::to_string(e.numvalue);
+1	        case ex_type::ident  : return "?FPVS"[(int)e.ident.type] + std::to_string(e.ident.index) + "\"" + e.ident.name + "\"";
+1	        // binary & misc
+1	        case ex_type::add    : return stringify_op(e, " + ",  "()");
+1	        case ex_type::eq     : return stringify_op(e, " == ", "()");
+1	        case ex_type::cand   : return stringify_op(e, " && ", "()");
+1	        case ex_type::cor    : return stringify_op(e, " || ", "()");
+1	        case ex_type::comma  : return stmt ? stringify_op(e, "; ", "{}", true) : stringify_op(e, ", ",  "()");
+1	        // unary
+1	        case ex_type::neg    : return "-(" + expect1() + ")";
+1	        case ex_type::deref  : return "*(" + expect1() + ")";
+1	        case ex_type::addrof : return "&(" + expect1() + ")";
+1	        // special
+1	        case ex_type::copy   : return "(" + stringify(e.params.back()) + " = " + stringify(e.params.front()) + ")";
+1	        case ex_type::fcall  : return "(" + (e.params.empty() ? "?" : stringify(e.params.front()))+")"+stringify_op(e,", ","()",false,1);
+1	        case ex_type::loop   : return "while " + stringify(e.params.front()) + " " + stringify_op(e, "; ", "{}", true, 1);
+1	        case ex_type::ret    : return "return " + expect1();
+1	    }
+1	    return "?";
+1	}
+1	static std::string stringify(const function& f)
+1	{
+1	    return stringify(f.code, true);
+1	}
+1	
+1	#include "textbox.hh"
+1	
+1	static std::string stringify_tree(const function& f)
+1	{
+1	    textbox result;
+1	    result.putbox(2,0, create_tree_graph(f.code, 132-2,
+1	        [](const expression& e)
+1	        {
+1	            std::string p = stringify(e), k = p;
+1	            switch(e.type)
+1	            {
+1	                #define o(n) case ex_type::n: k.assign(#n,sizeof(#n)-1); break;
+1	                ENUM_EXPRESSIONS(o)
+1	                #undef o
+1	            }
+1	            return e.params.empty() ? (k + ' ' + p) : std::move(k);
+1	        },
+1	        [](const expression& e) { return std::make_pair(e.params.cbegin(), e.params.cend()); },
+1	        [](const expression& e) { return e.params.size() >= 1; }, // whether simplified horizontal layout can be used
+1	        [](const expression&  ) { return true; },                 // whether extremely simplified horiz layout can be used
+1	        [](const expression& e) { return is_loop(e); }));
+1	    return "function " + f.name + ":\n" + stringify(f) + '\n' + result.to_string();
+1	}
+1	
+1	static bool equal(const expression& a, const expression& b)
+1	{
+1	    return (a.type == b.type)
+1	        && (!is_ident(a) || (a.ident.type == b.ident.type && a.ident.index == b.ident.index))
+1	        && (!is_string(a) || a.strvalue == b.strvalue)
+1	        && (!is_number(a) || a.numvalue == b.numvalue)
+1	        && std::equal(a.params.begin(), a.params.end(), b.params.begin(), b.params.end(), equal);
+1	}
+1	
+1	static void ConstantFolding(expression& e, function& f)
+1	{
+1	    if(is_add(e) || is_comma(e) || is_cor(e) || is_cand(e))
+1	    {
+1	        // Adopt all params of that same type
+1	        for(auto j = e.params.end(); j != e.params.begin(); )
+1	            if((--j)->type == e.type)
+1	            {
+1	                // Adopt all params of the parameter. Delete *j.
+1	                auto tmp(M(j->params));
+1	                e.params.splice(j = e.params.erase(j), std::move(tmp));
+1	            }
+1	        // No need to do this recursively, it has already been done recursively
+1	    }
+1	
+1	    // If an assign operator (copy) is used as a parameter
+1	    // to any other kind of expression than a comma or an addrof,
+1	    // create a comma sequence, such that e.g. x + 3 + (y=4) is replaced with x + 3 + (y=4, 4).
+1	    // If the RHS of the assign has side-effects, use a temporary:
+1	    // x + (y = f()) becomes x + (temp=f(), y = temp, temp)
+1	    // This helps bring out the RHS into the outer levels of optimizations,
+1	    // because the expression will be converted into (y=4, x+3+4) etc.
+1	    // For while-loops, only the first operand will be inspected; the rest is treated as comma.
+1	    if(!is_comma(e) && !is_addrof(e) && !e.params.empty())
+1	        for(auto i = e.params.begin(), j = (is_loop(e) ? std::next(i) : e.params.end()); i != j; ++i)
+1	            if(is_copy(*i))
+1	            {
+1	                auto assign = M(*i); *i = e_comma();
+1`6	                if(assign.params.front().`0:is_pure()`1:is_compiletime_expr()`01:)
+1	                {
+1	                    i->params.push_back(C(assign.params.front()));
+1	                    i->params.push_front(M(assign));
+1	                }
+1	                else
+1	                {
+1	                    expression temp = f.maketemp();
+1	                    i->params.push_back(C(temp)                 %= M(assign.params.front()));
+1	                    i->params.push_back(M(assign.params.back()) %= C(temp));
+1	                    i->params.push_back(M(temp));
+1	                }
+1	            }
+1	
+1	    // If expr has multiple params, such as in a function calls,
+1	    // and any of those parameters are comma expressions,
+1	    // keep only the last value in each comma expression.
+1	    //
+1	    // Convert e.g.      func((a,b,c), (d,e,f), (g,h,i))
+1	    //               --> (a,b, temp=c, d,e, temp2=f, g,h, func(temp,temp2,i))
+1	    //
+1	    // This way, expr itself becomes a comma expression,
+1	    // providing the same optimization opportunity to the parent expression.
+1	    //
+1	    // Take care to preserve execution order.
+1	    // For "loop", nothing is hoisted because everything must be re-executed every loop iteration.
+1	    if(std::find_if(e.params.begin(), e.params.end(), is_comma) != e.params.end())
+1	    {
+1	        // For conditional execution, only the first parameter is operated on, because
+1	        // the rest of them are only executed depending on the value of the first.
+1	        auto end = (is_cand(e) || is_cor(e) || is_loop(e)) ? std::next(e.params.begin()) : e.params.end();
+1	        // Move the "end" backwards until we hit a comma parameter.
+1	        for(; end != e.params.begin(); --end)
+1	        {
+1	            auto prev = std::prev(end);
+1	            if(is_comma(*prev) && prev->params.size() > 1) break;
+1	        }
+1	        expr_vec comma_params;
+1	        for(expr_vec::iterator i = e.params.begin(); i != end; ++i)
+1	        {
+1	            if(std::next(i) == end) // last?
+1	            {
+1	                if(is_comma(*i) && i->params.size() > 1)
+1	                    comma_params.splice(comma_params.end(), i->params, i->params.begin(), std::prev(i->params.end()));
+1	            }
+1	            else if(!i->is_compiletime_expr())
+1	            {
+1	                expression temp = f.maketemp();
+1	                if(is_comma(*i) && i->params.size() > 1)
+1	                    comma_params.splice(comma_params.end(), i->params, i->params.begin(), std::prev(i->params.end()));
+1	                comma_params.insert(comma_params.end(), C(temp) %= M(*i));
+1	                *i = M(temp);
+1	            }
+1	        }
+1	        if(!comma_params.empty())
+1	        {
+1	            // If the condition to a "loop" statement is a comma expression, replicate
+1	            // the expression to make it better optimizable:
+1	            //           while(a,b,c) { code }
+1	            // --> a; b; while(c)     { code; a; b; }
+1	            if(is_loop(e)) { for(auto& f: comma_params) e.params.push_back(C(f)); }
+1	            comma_params.push_back(M(e));
+1	            e = e_comma(M(comma_params));
+1	        }
+1	    }
+1	
+1	    switch(e.type)
+1	    {
+1	        case ex_type::add:
+1	        {
+1	            // Count the sum of literals
+1	            long tmp = std::accumulate(e.params.begin(), e.params.end(), 0l,
+1	                                       [](long n,auto&p){ return is_number(p) ? n + p.numvalue : n; });
+1	            // And remove them
+1	            e.params.remove_if(is_number);
+1	            // Adopt all negated adds: x + -(y + z) --> x + -(y) + -(z)
+1	            for(auto j = e.params.begin(); j != e.params.end(); ++j)
+1	                if(is_neg(*j) && is_add(j->params.front()))
+1	                {
+1	                    auto tmp(std::move(j->params.front().params));
+1	                    for(auto& p: tmp) p = e_neg(M(p));
+1	                    e.params.splice(j = e.params.erase(j), std::move(tmp));
+1	                }
+1	            // Readd the literal parameter if nonzero.
+1	            if(tmp != 0) e.params.push_back(tmp);
+1	            // Count inverted parameters. If the number is greater
+1	            // than the number of non-inverted parameters, flip the inversion
+1	            // and invert the sum. E.g. -(a) + -(b) + -(c) + d --> -(a + b + c + -(d))
+1	            if(std::count_if(e.params.begin(), e.params.end(), is_neg) > long(e.params.size()/2))
+1	            {
+1	                for(auto& p: e.params) p = e_neg(M(p));
+1	                e = e_neg(M(e));
+1	            }
+1	            break;
+1	        }
+1	        case ex_type::neg:
+1	            // If the parameter is a literal, replace with negated literal
+1	            if(is_number(e.params.front()))   e = -e.params.front().numvalue;
+1	            else if(is_neg(e.params.front())) e = C(M(e.params.front().params.front()));
+1	            break;
+1	        case ex_type::eq:
+1	            if(is_number(e.params.front()) && is_number(e.params.back()))
+1	                e = long(e.params.front().numvalue == e.params.back().numvalue);
+1	            else if(equal(e.params.front(), e.params.back()) && e.params.front().is_pure())
+1	                e = 1l;
+1	            break;
+1	        case ex_type::deref:
+1	            // Convert deref(addrof(x)) into x
+1	            if(is_addrof(e.params.front())) e = C(M(e.params.front().params.front()));
+1	            break;
+1	        case ex_type::addrof:
+1	            // Convert addrof(deref(x)) into x ; this is meaningful when x is a pointer
+1	            if(is_deref(e.params.front())) e = C(M(e.params.front().params.front()));
+1	            break;
+1	        case ex_type::cand:
+1	        case ex_type::cor:
+1	        {
+1	            auto value_kind = is_cand(e) ? [](long v){ return v!=0; } : [](long v){ return v==0; };
+1	            // With &&, delete nonzero literals. With ||, delete zero literals.
+1	            e.params.erase(std::remove_if(e.params.begin(), e.params.end(),
+1	                                          [&](expression& p) { return is_number(p) && value_kind(p.numvalue); }),
+1	                           e.params.end());
+1	            // Found zero (&&) or nonzero (||) --> delete all remaining params and all *preceding* pure params
+1	            if(auto i = std::find_if(e.params.begin(), e.params.end(), [&](const expression& p)
+1	                                     { return is_number(p) && !value_kind(p.numvalue); });
+1	               i != e.params.end())
+1	            {
+1	                // Find the last non-pure param before that constant
+1	                while(i != e.params.begin() && std::prev(i)->is_pure()) { --i; }
+1	                // Delete everything that follows that
+1	                e.params.erase(i, e.params.end());
+1	                // Replace with a comma stmt that produces 0 (&&) or 1 (||)
+1	                e = e_comma(M(e), is_cand(e) ? 0l : 1l);
+1	            }
+1	            break;
+1	        }
+1	        case ex_type::copy:
+1	        {
+1	            auto& tgt = e.params.back(), &src = e.params.front();
+1	            // If an assign-statement assigns into itself, and the expression has no side effects,
+1	            // replace with the lhs.
+1	            if(equal(tgt, src) && tgt.is_pure())
+1	                e = C(M(tgt));
+1	            // If the target expression of the assign-statement is also used in the source expression,
+1	            // replace the target-param reference with a temporary variable. A new temporary is created
+1	            // for every repeated reference in case the expression is question is impure.
+1	            else
+1	            {
+1	                expr_vec comma_params;
+1	                for_all_expr(src, true, [&](auto& e)
+1	                                        { if(equal(e, tgt)) comma_params.push_back(C(e = f.maketemp()) %= C(tgt)); });
+1	                if(!comma_params.empty())
+1	                {
+1	                    comma_params.push_back(M(e));
+1	                    e = e_comma(M(comma_params));
+1	                }
+1	            }
+1	            break;
+1	        }
+1	        case ex_type::loop:
+1	            // If the loop condition is a literal zero, delete the code that is never executed.
+1	            if(is_number(e.params.front()) && !e.params.front().numvalue) { e = e_nop(); break; }
+1	            // Process the contingent code like a comma statement
+1	            [[fallthrough]];
+1	        case ex_type::comma:
+1	            for(auto i = e.params.begin(); i != e.params.end(); )
+1	            {
+1	                // For while(), leave the condition expression untouched
+1	                // For comma,   leave the *final* expression untouched
+1	                if(is_loop(e))
+1	                    { if(i == e.params.begin()) { ++i; continue; } }
+1	                else
+1	                    { if(std::next(i) == e.params.end()) break; }
+1	
+1	                // Delete all pure params except the last
+1	                if(i->is_pure())
+1	                    { i = e.params.erase(i); }
+1	                else switch(i->type)
+1	                {
+1	                    // Adopt members from any sub-expression where the result is not needed
+1	                    default:
+1	                        ++i;
+1	                        break;
+1	                    case ex_type::fcall:
+1	                        // Even if the function call is not pure, it might be
+1	                        // because of the parameters, not the function itself.
+1	                        // Check if only need to keep the parameters.
+1	                        if(!pure_fcall(e)) { ++i; break; }
+1	                        [[fallthrough]];
+1	
+1	                    case ex_type::add:
+1	                    case ex_type::neg:
+1	                    case ex_type::eq:
+1	                    case ex_type::addrof:
+1	                    case ex_type::deref:
+1	                    case ex_type::comma:
+1	                        // Adopt all params of the parameter. Delete *i.
+1	                        auto tmp(std::move(i->params));
+1	                        e.params.splice(i = e.params.erase(i), std::move(tmp));
+1	                }
+1	            }
+1	            // Delete all params following a "return" statement or following an infinite loop
+1	            if(auto r = std::find_if(e.params.begin(), e.params.end(),
+1	                                  [](const expression& e) { return is_ret(e)
+1	                                                                || (is_loop(e)
+1	                                                                    && is_number(e.params.front())
+1	                                                                    && e.params.front().numvalue != 0); });
+1	               r != e.params.end() && ++r != e.params.end())
+1	            {
+1`7	                `1://`01:std::cerr << std::distance(r, e.params.end()) << " dead expressions deleted\n";
+1	                e.params.erase(r, e.params.end());
+1	            }
+1	
+1	            // If the last element in the list is the same as the preceding assign-target,
+1	            // delete the last element. e.g. x = (a=3, a)  -->  x = (a=3)
+1	            if(e.params.size() >= 2)
+1	            {
+1	                auto& last = e.params.back(), &prev = *std::next(e.params.rbegin());
+1	                if(is_copy(prev) && equal(prev.params.back(), last))
+1	                    e.params.pop_back();
+1	            }
+1	            if(e.params.size() == 1 && !is_loop(e))
+1	            {
+1	                // Replace with param
+1	                e = C(M(e.params.front()));
+1	            }
+1	            break;
+1	
+1	        default:
+1	            break;
+1	    }
+1	
+1	    // If the type is add, cand or cor, and there remains only one operand, replace with the operand
+1	    switch(e.params.size())
+1	    {
+1	        case 1: if(is_add(e))                    e = C(M(e.params.front()));
+1	                else if(is_cor(e) || is_cand(e)) e = e_eq(e_eq(M(e.params.front()), 0l), 0l); // bool-cast
+1	                break;
+1	        case 0: if(is_add(e) || is_cor(e))       e = 0l;
+1	                else if(is_cand(e))              e = 1l;
+1	    }
+1	}
+1	
+1	static void DoConstantFolding()
+1	{
+1	    do {} while(std::any_of(func_list.begin(), func_list.end(), [&](function& f)
+1	    {
+1	        // Recalculate function purity; the status may have changed
+1	        // as unreachable statements have been deleted etc.
+1	        FindPureFunctions();
+1	
+1	        std::string text_before = stringify(f);
+1`8	        `1://`01:std::cerr << "Before: " << text_before << '\n';
+1`8	        `1://`01:std::cerr << stringify_tree(f);
+1	
+1	        for_all_expr(f.code, true, [&](expression& e){ ConstantFolding(e,f); });
+1	        return stringify(f) != text_before;
+1	    }));
+1	}
+10	
+10	#include "transform_iterator.hh"
+10	#include <string_view>
+20	
+20	#define ENUM_STATEMENTS(o) \
+30	        o(0,nop)        /* placeholder that does nothing */ \
+31	        o(1,init)       /* p0 <- &IDENT + value (assign a pointer to name resource with offset) */ \
+32	        o(0,add)        /* p0 <- p1 + p2           */ \
+32	        o(0,neg)        /* p0 <- -p1               */ \
+33	        o(0,copy)       /* p0 <- p1      (assign a copy of another var) */ \
+34	        o(0,read)       /* p0 <- *p1     (reading dereference) */ \
+34	        o(0,write)      /* *p0 <- p1     (writing dereference) */ \
+35	        o(0,eq)         /* p0 <- p1 == p2          */ \
+35	        o(1,ifnz)       /* if(p0 != 0) JMP branch  */ \
+37	        o(0,fcall)      /* p0 <- CALL(p1, <LIST>)  */ \
+37	        o(0,ret)        /* RETURN p0;              */
+25	
+25	#define o(_,n) n,
+25`29	`1:enum class st_type { `01:ENUM_STATEMENTS(o)`1: };
+25	#undef o
+40	
+40	template<typename T, typename... Bad>
+40	using forbid1_t = std::enable_if_t<(... && !std::is_same_v<Bad, std::decay_t<T>>)>;
+40	template<typename...U>
+40	struct forbid_t { template<typename...T> using in = std::void_t<forbid1_t<T,U...>...>; };
+40	
+40	template<typename Iterator, typename PointedType, typename Category>
+41	using require_iterator_t = std::enable_if_t
+41	<   std::is_convertible_v<typename std::iterator_traits<Iterator>::value_type,       PointedType>
+41^	 && std::is_convertible_v<typename std::iterator_traits<Iterator>::iterator_category,Category>>;
+100	
+100	struct statement
+100	{
+104	    typedef unsigned reg_type;
+102	
+101	    st_type               type{st_type::nop};
+130	    std::string           ident{};         // For init: reference to globals, empty=none
+130^	    long                  value{};         // For init: literal/offset
+110	    std::vector<reg_type> params{};        // Variable indexes
+110	    statement*            next{nullptr};   // Pointer to next stmt in the chain. nullptr = last.
+145^	    statement*            cond{nullptr};   // For ifnz; If var[p0] <> 0, cond overrides next.
+120	
+120	    // Construct with type and zero or more register params
+120`127	`1:    statement() {}
+120`160	    template<class...T`1:, class=forbid_t<st_type,long,statement*>::in<T...>`01:>
+120	    statement(st_type t, T&&...r)                  : statement(std::forward<T>(r)...) { type=t; }
+125^^^	
+125^^^	    template<class...T>
+125^^^`150*	    statement(reg_type tgt, T&&...r)               : statement(std::forward<T>(r)...) { params.insert(params.begin(), tgt); }
+150	    statement(reg_type tgt, T&&...r)               : statement(&tgt, &tgt+1,  std::forward<T>(r)...) {}
+140^^^	
+141	    // Special types that also force the statement type:
+140^^^`165	    template<class...T`1:, class=forbid_t<st_type,long>::in<T...>`01:>
+140^^^	    statement(std::string_view i, long v, T&&...r) : statement(st_type::init, std::forward<T>(r)...) { ident=i; value=v; }
+140^^^^^^	
+140^^^^^^`168	    template<class...T`1:, class=forbid_t<st_type,statement*>::in<T...>`01:>
+140^^^^^^	    statement(statement* b, T&&...r)               : statement(st_type::ifnz, std::forward<T>(r)...) { cond=b; }
+155^^^^^^^	
+155^^^^^^^	    // An iterator range can be used to assign register params
+155^^^^^^^	    template<class...T, class It, class=require_iterator_t<It, reg_type, std::input_iterator_tag>>
+155^^^^^^^	    statement(It begin, It end, T&&...r)           : statement(std::forward<T>(r)...) { params.insert(params.begin(), begin, end); }
+170	
+170	    void Dump(std::ostream& out) const
+170	    {
+172	        switch(type)
+172	        {
+174vvvvvvvv`176	            #define o(_,n)`0: \`1: case st_type::n: out << "\t" #n "\t"; break;
+174vvvvvvvv`175*	            inline bool is_##n(const statement& s) { return s.type == st_type::n; }
+174vvvvvvvv	            ENUM_STATEMENTS(o)
+174vvvvvvvv	            #undef o
+172	        }
+178	        for(auto u: params) out << " R" << u;
+178	        if(type == st_type::init)  { out << " \"" << ident << "\" " << value; }
+170	    }
+100	};
+27^^^^	
+27^^^^	#define o(_,n) \
+28	inline bool is_##n(const statement& s) { return s.type == st_type::n; }
+27^^^^	ENUM_STATEMENTS(o)
+27^^^^	#undef o
+200	
+200	struct compilation
+200	{
+339	    std::vector<std::unique_ptr<statement>> all_statements; // All statements
+338	
+310	    template<typename... T>
+311`340	    statement* CreateStatement(T&&... args) { return `1:CreateStatement(`01:new statement(std::forward<T>(args)...)`1:)`01:; }
+340^	    statement* CreateStatement(statement*s) { return all_statements.emplace_back(s).get(); }
+360^^^^^^^^^^^^^	
+360^^^^^^^^^^^^^`361`375	    #define o(`0:_`1234:f`01234:,n)`2: /* f: flag that indicates if there's a special constructor that doesn't need the type */`0123: \
+365`366	    `1:template<typename... T> `01:\
+360^^^^^^^^^^^^^`370*	    inline bool is_##n(const statement& s) { return s.type == st_type::n; }
+370	    inline statement* s_##n(T&&... args) { if constexpr(f)  return CreateStatement(std::forward<T>(args)...); \
+370^	                                           else return CreateStatement(st_type::n, std::forward<T>(args)...); }
+360^^^^^^^^^^^^^	    ENUM_STATEMENTS(o)
+360^^^^^^^^^^^^^	    #undef o
+300	
+411v	    std::map<std::string, std::size_t> function_parameters; // Number of parameters in each function
+410	    std::map<std::string, statement*>  entry_points;
+400	
+210	    std::string string_constants;
+210	
+210	    void BuildStrings()
+210	    {
+220	        std::vector<std::string> strings;
+220	        for(auto& f: func_list)
+220	            for_all_expr(f.code, true, is_string, [&](const expression& exp)
+220	            {
+225	                strings.push_back(exp.strvalue + '\0');
+220	            });
+230	        // Sort by length, longest first
+230	        std::sort(strings.begin(), strings.end(),
+230	            [](const std::string& a, const std::string& b)
+230	            {
+240	                return a.size()==b.size() ? (a<b) : (a.size()>b.size());
+230	            });
+235	        // Produce a single string that contains all the original strings
+235	        for(const auto& s: strings)
+235	            if(string_constants.find(s) == string_constants.npos)
+235	                string_constants += s;
+210	    }
+700	
+700	    void Dump(std::ostream& out)
+700	    {
+740	        struct data
+740	        {
+742	            std::vector<std::string> labels{};
+742	            std::size_t done{}, referred{}; // bool would be fine if permitted by c++17
+740	        };
+740	        std::map<statement*, data> statistics;
+710	        std::list<statement*> remaining_statements;
+760	
+760	        auto add_label = [l=0lu](data& d) mutable { d.labels.push_back('L' + std::to_string(l++)); };
+710	
+710	        for(const auto& s: entry_points)
+710	        {
+715	            remaining_statements.push_back(s.second);
+765`766	            `1:statistics`01:[s.second].labels.push_back(s.first);
+710	        }
+750	        for(const auto& s: all_statements)
+750	        {
+755	            if(s->next) { auto& t = statistics[s->next]; if(t.labels.empty() && t.referred++) add_label(t); }
+755	            if(s->cond) { auto& t = statistics[s->cond]; if(t.labels.empty()) add_label(t); }
+750	        }
+720	        while(!remaining_statements.empty())
+720	        {
+721	            statement* chain = remaining_statements.front(); remaining_statements.pop_front();
+730`785	            for(`1:bool needs_jmp = false`01:; chain != nullptr; chain = chain->next`1:, needs_jmp = true`01:)
+730	            {
+770`771	                auto`1:& stats`01: = statistics[chain];
+773	                if(stats.done++)
+773	                {
+780`782	                    `1:if(needs_jmp) { `01:out << "\tJMP " << stats.labels.front() << '\n';`1: }
+780	                    break;
+773	                }
+770	
+775	                for(const auto& l: stats.labels) out << l << ":\n";
+735	                chain->Dump(out);
+736	                if(chain->cond)
+736	                {
+790	                    auto& branch_stats = statistics[chain->cond];
+790	                    out << ", JMP " << branch_stats.labels.front();
+738`790	                    `1:if(!branch_stats.done) { `01:remaining_statements.push_front(chain->cond);`1: }
+736	                }
+735	                out << '\n';
+730	            }
+720	        }
+700	    }
+435	
+435	    struct compilation_context
+435	    {
+437	        statement::reg_type counter; // Counter for next unused register number
+437	        statement**         tgt;     // Pointer to where the next instruction will be stored
+437	        std::map<std::size_t, statement::reg_type> map; // AST variables to register numbers mapping
+435	    };
+440	    statement::reg_type Compile(const expression& code, compilation_context& ctx)
+440	    {
+445	        statement::reg_type result = ~statement::reg_type();
+445	
+450	        // make(): Create a new register (variable) for the IR
+455	        auto make = [&]()             { return ctx.counter++; };
+455	        // put():  Place the given chain of code at *tgt, then re-point tgt into the end of the chain
+455	        auto put  = [&](statement* s) { for(*ctx.tgt = s; s; s = *ctx.tgt) ctx.tgt = &s->next; };
+449	
+456	        switch(code.type)
+456	        {
+470	            case ex_type::string:
+470	            {
+475	                // Create an INIT statement (+ possible integer offset) that refers to the string table
+475	                put(s_init(result = make(), "$STR", (long)string_constants.find(code.strvalue + '\0')));
+472	                break;
+470	            }
+480	            case ex_type::ident:
+480	            {
+485	                switch(auto& id = code.ident; id.type)
+485	                {
+487	                    case id_type::function:  put(s_init(result = make(), id.name, 0l)); break;
+487	                    case id_type::variable:  result = ctx.map.emplace(id.index, make()).first->second; break;
+487	                    case id_type::parameter: result = id.index; break;
+487	                    case id_type::undefined: std::cerr << "UNDEFINED IDENTIFIER, DON'T KNOW WHAT TO DO\n"; break;
+485	                }
+482	                break;
+480	            }
+462	
+460	            case ex_type::deref:  put(s_read(result = make(), Compile(code.params.front(), ctx))); break;
+460	            case ex_type::neg:    put(s_neg(result  = make(), Compile(code.params.front(), ctx))); break;
+460	            case ex_type::ret:    put(s_ret(result  =         Compile(code.params.front(), ctx))); break;
+460	            case ex_type::number: put(s_init(result = make(), "", code.numvalue)); break;
+460	            case ex_type::nop:    put(s_init(result = make(), "", 0L)); break; // dummy expr
+515	            case ex_type::addrof: std::cerr << "NO IDEA WHAT TO DO WITH " << stringify(code) << '\n'; break; // Unhandleable
+490	
+490	            case ex_type::add:
+490	            case ex_type::eq:
+490	            case ex_type::comma:
+490	            {
+494	                // Trivially reduce parameters from left to right
+496	                for(auto i = code.params.begin(); i != code.params.end(); ++i)
+497	                    if(statement::reg_type prev = result, last = result = Compile(*i, ctx); prev != ~0u)
+497	                      { if(is_add(code))     { put(s_add(result = make(), prev, last)); }
+497^	                        else if(is_eq(code)) { put(s_eq(result  = make(), prev, last)); }
+497^^	                        else /*comma, no reducer: discard everything but the last stmt*/ {result=last;} }
+492	                break;
+490	            }
+500	            case ex_type::copy:
+500	            {
+510	                // Be careful to compile the source expression first, and then the target expression.
+510	                // If the target expression is a pointer dereference, create a WRITE statement rather than COPY.
+511	                if(const auto& src = code.params.front(), &dest = code.params.back(); is_deref(dest))
+511	                    { result = Compile(src, ctx); put(s_write(Compile(dest.params.front(), ctx), result)); }
+511	                else
+511^^	                    { auto temp = Compile(src, ctx); put(s_copy(result = Compile(dest, ctx), temp)); }
+505	                break;
+500	            }
+520	            case ex_type::fcall:
+520	            {
+530	                // Compile each parameter expression, and create a subroutine call statement with those params.
+531`532	                put(s_fcall(result = make(), make_`1:transform_iterator`01:(code.params.begin(), code.params.end(),
+531	                                                                     [&](const expression&p){ return Compile(p,ctx); }),
+533	                                             transform_iterator<statement::reg_type>{}));
+525	                break;
+520	            }
+550	            case ex_type::loop:
+550	            case ex_type::cand:
+550	            case ex_type::cor:
+550	            {
+560	                // Conditional code (including the while-loop!)
+565	                const bool is_and = !is_cor(code); // while(), if() and &&
+565	                result            = make();
+565	                // Three mandatory statements will be created:
+565	                statement* b_then = s_init(result, "", is_and ? 1l : 0l);        // Then-branch
+565^	                statement* b_else = s_init(result, "", is_and ? 0l : 1l);        // Else-branch
+565^^`566	                statement* end`0:;`1:    = s_nop(); b_then->next = b_else->next = end; // A common target for both.
+570	                // Save a pointer to the first expression (needed for loops).
+570	                // Take a reference to the pointer and not copy of the pointer,
+570	                // because the pointer will change in this loop.
+575	                statement*& begin = *ctx.tgt;
+580	                for(auto i = code.params.begin(); i != code.params.end(); ++i)
+580	                {
+585	                    // Compile the expression.
+585	                    statement::reg_type var = Compile(*i, ctx);
+585	                    // Don't create a branch after contingent statements in a loop.
+585	                    if(is_loop(code) && i != code.params.begin()) { continue; }
+585	                    // Immediately after the expression, create a branch on its result.
+585	                    statement* condition = *ctx.tgt = s_ifnz(var, nullptr);
+585	                    // With &&, the code continues in the true-branch. With ||, in false-branch.
+585	                    // The other branch is tied into b_else.
+590	                    if(is_and) { ctx.tgt = &condition->cond; condition->next = b_else; }
+590^	                    else       { ctx.tgt = &condition->next; condition->cond = b_else; }
+580	                }
+575	                // The end of the statement chain is linked into b_then.
+575	                // For loops, the chain is linked back into the start of the loop instead.
+575	                *ctx.tgt = is_loop(code) ? begin : b_then;
+575	                ctx.tgt = &end->next;  // Code continues after the end node.
+555	                break;
+550	            }
+456	        }
+445	        return result;
+440	    }
+430	
+430`431`432	    void CompileFunction`0:(f)`1:(& f)`2:(function& f)
+432	    {
+433	        function_parameters[f.name] = f.num_params;
+433	
+439	        compilation_context ctx{ f.num_params, &entry_points[f.name], {} };
+439	        Compile(f.code, ctx);
+432	    }
+420	
+420	    void Compile()
+420	    {
+423	        BuildStrings();
+426	        for(auto& f: func_list) CompileFunction(f);
+420	    }
+200	};
+1	
+1	int main(int argc, char** argv)
+1	{
+1	    std::string filename = argv[1];
+1	    std::ifstream f(filename);
+1	    std::string buffer(std::istreambuf_iterator<char>(f), {});
+1	
+1	    lexcontext ctx;
+1	    ctx.cursor = buffer.c_str();
+1	    ctx.loc.begin.filename = &filename;
+1	    ctx.loc.end.filename   = &filename;
+1	
+1	    yy::conj_parser parser(ctx);
+1	    parser.parse();
+1	    func_list = std::move(ctx.func_list);
+1	
+1	    std::cerr << "Initial\n";
+1	    for(const auto& f: func_list) std::cerr << stringify_tree(f);
+1	
+1	    DoConstantFolding();
+1	
+1	    std::cerr << "Final\n";
+1	    for(const auto& f: func_list) std::cerr << stringify_tree(f);
+1	
+600	    compilation code;
+600	    code.Compile();
+600	
+600	    std::cerr << "COMPILED CODE\n";
+600	    code.Dump(std::cerr);
+1	}
+	
