@@ -33,7 +33,7 @@ Files: `ep3/`
 ## Episode 4: Optimizing IR
 
 Video link: https://youtu.be/wdOpIIzxiNA  
-Episode date: TBA  
+Episode date: 2018-04-08  
 
 Files: `ep4/`
 
