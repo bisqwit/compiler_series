@@ -30,15 +30,23 @@ Episode date: 2018-02-15
 
 Files: `ep3/`
 
-## Episode 4: Optimizing IR
+## Episode 4a: Optimizing IR
 
 Video link: https://youtu.be/wdOpIIzxiNA  
 Episode date: 2018-04-08  
 
 Files: `ep4/`
 
-## Episode 5: TBA
+## Episode 4b: Register Renumbering
+
+Video link: https://www.youtube.com/watch?v=NOFDr3HjuuQ  
+Episode date: 2018-04-29  
+
+Files: `ep5/`
+
+## Episode 5: Code Generators
 
 Video link: TBA  
-Episode date: TBA  
+Episode date: TBA
 
+Files: `ep6/`

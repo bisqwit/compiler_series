@@ -1,0 +1,109 @@
+<?php
+
+define('IN_FILE', 'conj.cc.lst');
+define('SAVE_FILE', 'conj.y');
+define('SHOW_PLAN',   true);
+define('FINAL_OUTPUT', false);
+
+define('PLAN_SHOW_OUTSIDES', 3); // Max 3 lines outside visible area
+
+define('MAX_LEVEL', 99900);
+define('DEFAULT_SPEED', 'ÿÿ'); // Default speed: 20/16
+define('COMMENT_SPEED', 'ÿÿ'); // 4/16
+
+define('ATFIRST', DELAY1s."ÿÿ\re conj.y\ru");
+define('ATLAST', "ÿÿdconjfin4.y\rÿÿdconj.y\r".DELAY100s."ÿÿx\r\rexit\r\r");
+
+define('FORCE_SPEED', false);
+#define('FORCE_SPEED', 4);
+
+define('FIRST_PLAN', 10);
+
+$screens = Array
+(
+  #        textdims  font  double c64
+  1    => ["-".RT."\r".SF1."128 50\r",     128,50, 8,8, 0,0],
+  10   => ["-".RT."\r".SF1."128 50\r",     128,50, 8,8, 0,0, 'reset'=>true],
+  100  => [F3.F3,                            124,50, 8,8, 0,0],
+  120  => [F2.F2.F2.F2.F2.F2.F2.F2.F2.F2,    124,60, 8,8, 0,0],
+  201  => [F1.F1.F1.F1.F1.F1.F1.F1.F1.F1,    124,50, 8,8, 0,0],
+  290  => [F2.F2.F2.F2.F2.F2.F2.F2.F2.F2,    124,60, 8,8, 0,0],
+  640  => [F4.F4.F4.F4,                      132,60, 8,8, 0,0],
+);
+
+$line_anchor = Array
+(
+  # Line number to make the first visible line on screen,
+  # relative to the first line that gets edited
+  1 => 0,
+  10 => 8,
+  50 => 4,
+  60 => 23,
+  100 => 0,
+  140 => 49,
+  200 => 28,
+  220 => 25,
+  240 => 15,
+  310 => 36,
+  400 => 47,
+  420 => 9,
+  500 => 42,
+  530 => 23,
+  540 => 50,
+  600 => 39,
+  601 => 12,
+  650 => 26,
+  690 => 42,
+  700 => 33,
+  800 => 50,
+  811 => 44,
+  830 => 21,
+);
+
+$selections = Array
+(
+  20 => Array(0 => 'zero_reg'),
+  125 => Array(0 => ' = number_constants.'),
+  140 => Array(0 => 'st->next'),
+  145 => Array(0 => 'st->'),
+  201 => Array(0 => ' n_renames'),
+  211 => Array(0 => 'write-statements'),
+  241 => Array(0 => 'statement'),
+  275 => Array(0 => 'observers'),
+  290 => Array(0 => '_statements.'),
+  321 => Array(0 => 'sources'),
+  425 => Array(0 => 'their_lore'),
+  426 => Array(0 => 'reader'),
+  460 => Array(0 => 'their_lore'),
+  480 => Array(0 => 'reach_list'),
+  491 => Array(0 => 'pending'),
+  492 => Array(0 => 'recursion_or_loop'),
+  495 => Array(0 => 'chain'),
+  501 => Array(0 => 'writer_statements'),
+  620 => Array(0 => 'read_regs_of_copyinsn'),
+  621 => Array(0 => 'write_insn'),
+  631 => Array(0 => '.presence[wregno'),
+  641 => Array(0 => 'reader'),
+  680 => Array(0 => 'RePoint'),
+);
+
+$turbo_ranges = Array
+(
+  15 => 1,
+  221 => 3,
+  250 => 1, 445 => 1, 420 => 1, 600 => 1, 601 => 1, 675 => 1,
+  700 => 1,
+  811 => 1,
+);
+
+// Delay performed before this number
+$bigdelay = Array(
+  10, 15, 42, 50,60,100,
+  200,
+  531,
+  540,
+  600,
+  700,
+  800,
+  820,
+);

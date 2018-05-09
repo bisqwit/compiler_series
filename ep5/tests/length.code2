@@ -1,0 +1,6 @@
+Length s:
+{
+    var result = 0;
+    while(*s++) { ++result; }
+    return result;
+}

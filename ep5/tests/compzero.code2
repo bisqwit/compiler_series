@@ -1,0 +1,10 @@
+test1 x:
+{
+  if(x == 0) { return 4; }
+  return 5;
+}
+test2 x:
+{
+  if(x != 0) { return 4; }
+  return 5;
+}

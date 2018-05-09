@@ -37,3 +37,15 @@
 [submodule "ep4/transform_iterator"]
 	path = ep4/transform_iterator
 	url = https://gist.github.com/a263ac9f9b57d32559042677a32afa9d.git
+[submodule "ep5/textbox"]
+	path = ep5/textbox
+	url = https://gist.github.com/458048c60d271ab2536665cb81595c6b.git
+[submodule "ep5/dostools/that_editor"]
+	path = ep5/dostools/that_editor
+	url = git@github.com:bisqwit/that_editor.git
+[submodule "ep5/dostools/inputter"]
+	path = ep5/dostools/inputter
+	url = git://bisqwit.iki.fi/inputter.git
+[submodule "ep5/transform_iterator"]
+	path = ep5/transform_iterator
+	url = https://gist.github.com/a263ac9f9b57d32559042677a32afa9d.git

@@ -1,0 +1,14 @@
+
+strchr string, char:return 0;
+strcmp string1, string2:return 0;
+
+strpos haystack, needle:
+{
+    var notfound = 1;
+    while(notfound && (haystack = strchr(haystack, *needle)))
+    {
+        notfound = strcmp(haystack,needle);
+        if(notfound) ++haystack;
+    }
+    return haystack;
+}

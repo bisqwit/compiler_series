@@ -1,0 +1,36 @@
+
+strchr string, char:
+{
+   var found = 0, ch;
+   while(!found && (ch = *string))
+   {
+       if(ch == char) found = 1;
+       if(!found) ++string;
+   }
+
+   return found ? string : 0;
+}
+
+strcmp string1, string2:
+{
+    var done = 0, a, b, result;
+    while(!done)
+    {
+    	var a = *string1, b = -*string2;
+    	result = a+b;
+    	if(!a || !b || result) { done = 1; }
+    	if(!done) { ++string1; ++string2; }
+    }
+    return result;
+}
+
+strpos haystack, needle:
+{
+    var notfound = 1;
+    while(notfound && (haystack = strchr(haystack, *needle)))
+    {
+        notfound = strcmp(haystack,needle);
+        if(notfound) ++haystack;
+    }
+    return haystack;
+}

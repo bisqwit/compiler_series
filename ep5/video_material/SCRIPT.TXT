@@ -1,0 +1,362 @@
+God kvell! [greeting]
+
+	[TODO: recap flashes of each episode]
+When I made episode 4 of this building-a-compiler series,
+I intentionally left out some optimizations,
+because they were rather complicated.
+In this episode we shall do them.
+
+But first, one optimization that *should* have been
+in the previous episode but I totally forgot about it!
+
+	[Slide 2: ifnz-test-eq.txt, ifnz-test-neq.txt]
+Here is an example function that simply returns
+one of two variables depending whether two other variables match.
+The compiler generated an equals-test, a branch, and two return statements.
+
+But here’s what happens if we change the condition into a mismatch.
+Now there’s a whole lot more things happening.
+	[Slides 3..6: ifnz-test, Fixed]
+Without reason. But it is easy to fix.
+	[code 10]
+If an IFNZ instrument is applied on a register
+that contains the result of an EQ instruction,
+and one of the sources to the EQ instruction
+is a register that contains a literal zero,
+and the source that the EQ instruction samples
+is still accessible at the point of the IFNZ,
+replace the source of the IFNZ with the source of the EQ instruction,
+and swap the next & cond pointers.
+
+Now, as we get closer to actual machine code,
+it will make sense to make some changes
+to our intermediate representation.
+	[Slide 7: INIT+ADD]
+As you remember, I designed this
+intermediate representation
+so that whenever you want to utilize
+number literals in your code,
+you need to create a separate INIT
+statement for it.
+
+Having a simple intermediate representation is great for optimizations,
+because there aren’t that many special cases to worry about.
+But for code generation, it makes things a bit difficult.
+
+	[code 50]
+I decided to address this issue with a small patch.
+Basically, a certain number of the register parameters
+is reserved to indicate literal parameters.
+Those numbers act as indices into a global array that
+stores all the distinct literal parameters.
+	[code 100]
+Because this is a project for a YouTube video
+under the guise of a real motive
+and not a perfectly designed compiler
+to be used by generations to come,
+I’m just going to copypaste the GetLiteral method
+from the previous episode and make small changes to it.
+This time, we are not only interested in number literals,
+but also of references to globals,
+such as strings or functions.
+	[code 120]
+Essentially all detected pairs of identifier+number
+will be added to the number_constants array,
+and replaced with a special register number
+that is an index to that array.
+	[code 130]
+Then, all statements in the whole program are
+checked; if any of them has a read-parameter
+that is known at compile-time
+to have a certain value in the register,
+that register is replaced with a reference
+to the number_constants array.
+	[code 140]
+As a special optimization, INIT statements
+immediately followed by RET statements
+will be subject to that same treatment
+even if the RET statement can be reached
+from multiple different contexts
+and could otherwise not be optimized.
+
+	[Slide 8: Show changes]
+And this is what we have accomplished so far.
+	[com_ep5_regalloc_intro.mov, dub it]
+The next topic will be register allocation.
+	[com_ep5_regalloc_book.mov, do foley + dub TODO:foley]
+I have a book called Advanced Compiler Design
+and Implementation, by Steven Muchnick.
+
+It is impressively detailed,
+covering nearly everything
+you can think of concerning
+advanced compiler design and implementation.
+
+If you are interested of purchasing the book,
+there is a link in the video description
+to an Amazon page where you can buy it.
+
+But right now I am interested
+about Register Allocation.
+Page 481…
+
+Let’s see what the book
+has to say about the topic.
+
+It’s here.
+And it’s not a small topic!
+
+The book begins describing a Graph Coloring algorithm.
+In much detail, with many code samples.
+Then it describes an Interference Graph,
+and so on, and so on, and so on.
+There is slight problem for me.
+These algorithms assume that the compiler
+operates on a Single Static Assignment.
+My compiler does not!
+
+Of course the book also has a huge chapter
+about Single Static Assignment, SSA,
+
+but meh.
+So far, I haven’t done anything
+in this compiler by the book,
+
+and I am not going to start now.
+I’m going to make stuff up by myself.
+
+Kids, don’t do this at home.
+Or do, because it’s so much more exciting.
+
+With the next episode in mind,
+the basic idea in my compiler will be this:
+	[Slide 9 & 10: Overlay example registers of x86, 65c816, ARM…]
+	[Scroll from bottom up; Fade in disclaimer]
+IR registers R0, R1, R2 and so on
+will be directly converted into the platform’s CPU registers,
+up to the number of registers available.
+Any IR register with a number greater than
+the number of actual hardware registers
+will be replaced with a memory variable,
+likely from the stack.
+
+	[Slide 11,12: stpcpyn.code2]
+We should at least try to perform
+calculations using as small register
+numbers as possible.
+
+In this example code, the register numbers
+are definitely not optimal.
+I spy things like R10, R17 and R18,
+which are totally unnecessary considering
+that for example R5 is not even used.
+
+	[code 200]
+The basic idea of my register renaming algorithm is this:
+We go through all statements that write into a register,
+but in a certain order:
+
+The statements with the shortest lifetime
+on the result will be processed first.
+
+For each register that is written to by that statement,
+we check the current knowledge of all registers
+with a smaller number than that register.
+
+If there exists another register with a smaller number
+that either does not contain anything meaningful,
+or that contains a value that is never read by any
+statement that can still be reached from this point,
+
+the write-register of this statement will be replaced
+with the smaller register number,
+and all statements that were reading this register number
+will be changed to read the new register number instead.
+
+qHowever, this change can only be done
+if the statements, that depend on this write-instruction,
+do not get the contents of that same register
+alternatively from some other write-instruction.
+
+It is almost as complicated as the COPY optimization
+from the end of last episode,
+and checking all these conditions requires a lot of work.
+Commence music!
+	[kikaikoujou_nostalgia, loop length is 2 minutes]
+	[hitsujigumo]
+
+	[after 540]
+	[Slide 13: side-by-side comparison stpcpyn.code]
+
+Now, when we compare the optimization of these two functions
+before and after the register-allocator,
+a clear change emerges.
+
+The new shape of the Length function
+only uses three registers,
+whereas the previous one used four;
+and the highest register number used is R2.
+
+For the stpcpyn function, 
+the number of registers used has changed
+from eight to five.
+Three of which were parameters.
+
+However, it could still be better.
+	[Fade to Slide 14: highlight copy-add-write; Papers-please Inspection SFX]
+Notice here how it makes a copy of a variable?
+The only place that R4 is used is here.
+	[anonatsu_nostalgia]
+What if the code was written like this instead?
+	[Slide 15: show how to rewrite as write-add]
+Then R4 would not be needed.
+	[Slide 16: fade in replacement "read R3 R1" - "add R1 R1 1"]
+The other COPY could be also removed.
+
+	[code 600]
+This is actually really tricky to get right.
+When you shuffle code around,
+changing the relative order of statements,
+you have to be really careful
+to make sure that the behavior of the code does not change.
+
+A compiler must never, ever change
+what the code does when it optimizes the code,
+provided the code is well-formed.
+
+If your source code contains undefined behavior,
+then the compiler is free to make demons fly out of your nose
+for all that matters.
+
+So ensuring that the code is still well-formed
+after the optimization is paramount.
+
+But there is another point to consider.
+When I released the previous episode,
+I was asked this question:
+
+When the compiler runs different optimization methods in a loop,
+is it possible that it gets stuck in an infinite loop
+where it first changes the code one way,
+then it changes the code some other way,
+and then it changes back and so on,
+constantly alternating between two
+or more different shapes for the code?
+
+This is an important question!
+Yes, if you are not careful with the optimization algorithms,
+it is very much possible that the compiler may get stuck in an infinite loop.
+
+The way you prevent this problem
+is by defining clearly
+what constitutes an improvement.
+Define unambiguously how two code snippets are put in a better-worse order,
+and why,
+and make sure all these definitions interact in a purposeful manner.
+This can be tricky sometimes!
+
+This very optimization method,
+where I change the order of statements,
+is precariously prone to getting stuck in an infinite loop.
+
+The ten-line IF statement is carefully crafted
+to prevent an infinite loop from occurring.
+
+	[code 700]
+There is a LOT more that could be done
+by reorganizing the code — examples are listed on screen —
+but I could not think of a clever way to write them.
+
+In any case, let’s see how it runs now.
+	
+	[Slide 16,17: Add conj-regalloc-buggy results]
+
+It is certainly… More optimal now.
+But there is another thing that it is now: Buggy.
+	[Blink Slide 19 to emphasize the word “buggy”]
+I said earlier that the compiler must never change
+how the code behaves, and here,
+it has certainly changed it.
+
+The code was supposed to read and write
+using the values of the pointer before the increment,
+but that’s not what is happening in the modified code.
+It is first incrementing the pointer,
+and then using that incremented value in the read and the write.
+Furthermore,
+it is actually overwriting the pointer with the READ statement!
+
+This is totally broken.
+What did I do wrong?
+
+	[code 800]
+Off-screen I traced the problem to the code
+that I wrote in the last episode.
+I did say,
+	[sepia quote from previous episode]
+“Unfortunately there are myriad ways
+that this can go wrong.”
+	[end quote]
+in the last episode.
+And despite my best efforts, there is still
+one situation where the COPY optimization is invalid.
+
+In this case, I found it easier to check
+whether a mistake has already happened
+rather than to check against it in advance,
+and cancel the changes if there was a mistake.
+
+My compiler is definitely not breaking any speed records
+with this kind of coding.
+
+	[Slide 20,21: Add conj-regalloc-notbuggy results]
+Okay… It’s not buggy anymore.
+	[Slide 22: Show what we wanted]
+Somehow, it’s not quite as optimal as I hoped —
+in fact we are back at using five registers.
+
+But to quote Captain Picard,
+	[Use Slide 23 + video clip https://www.youtube.com/watch?v=t4A-Ml8YHyM , dub it]
+it is possible to commit no mistakes and still lose.
+That is not a weakness. That is life.
+
+	[Fade to Slide 24, 25, 26: Ending screen with credits etc.]
+By the way, there is a certain thing
+about this optimizer
+that I don’t think I made clear enough yet.
+
+Many programmers are shy of using
+boolean status variables.
+In the fear of adding lots of extra comparisons to their program,
+they add things like goto and break statements
+in hopes of better efficiency.
+
+	[Slide 27: fade in booleans.code2: source and compiled code]
+
+Here are three example functions.
+Each of them uses a boolean variable
+to indicate loop termination.
+My compiler is made on a shoestring budget,
+but even it
+is smart enough to optimize away these condition variables.
+Look at the IR code:
+You can’t find the boolean variables anywhere.
+They are completely translated into program logic.
+
+If my shabby compiler that I only made for a YouTube video
+can do this,
+then how much more likely
+is a professional production-quality compiler
+able to optimize away these status variables?
+
+Food for thought.
+
+	[Slide 28]
+In the next and final episode of this series,
+we will finally go into the process of
+generating actual machine code
+for at least two different platforms.
+
+Hope to see you then!
+
+Ha en trevlig dag! Hejdå!

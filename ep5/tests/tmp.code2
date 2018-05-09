@@ -1,0 +1,21 @@
+stpcpy a,b: return *a=*b;
+stpcpyn a,b,n: return *a=*b;
+append a,b: return *a=*b;
+LastCharN a,b: return *a=*b;
+a x: return ++*x;
+IsAlien x: return ++*x;
+IsAbbrev x: return ++*x;
+IsEs x: return ++*x;
+IsDe x: return ++*x;
+AkiEnd x: return ++*x;
+DoubleHard x: return ++*x;
+EndsWithVowel x: return ++*x;
+
+IllativeStem output,s:
+{
+    if(IsAlien(s))        return stpcpy(stpcpy(output,s), "'hu");
+    if(DoubleHard(s))     return append(append(stpcpyn(output,s,2), LastCharN(s,1)), LastCharN(s,1));
+    if(AkiEnd(s))         return stpcpy(stpcpyn(output,s,2), "ee");
+    if(EndsWithVowel(s))  return append(stpcpy(output,s), LastCharN(s, 1));
+    return                       stpcpy(stpcpy(output,s), "ii");
+}
