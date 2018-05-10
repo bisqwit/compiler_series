@@ -1,8 +1,8 @@
 
 strchr string, char:
 {
-   var found = 0, ch;
-   while(!found && (ch = *string))
+   var found = 0;
+   while(!found && (var ch = *string))
    {
        if(ch == char) found = 1;
        if(!found) ++string;
@@ -13,7 +13,7 @@ strchr string, char:
 
 strcmp string1, string2:
 {
-    var done = 0, a, b, result;
+    var done = 0, result;
     while(!done)
     {
     	var a = *string1, b = -*string2;
