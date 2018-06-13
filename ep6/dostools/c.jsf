@@ -1258,6 +1258,7 @@ done
 	"explicit"	kw   #c++
 	"export"	kw   #c++
 	"false"		kw   #c++
+	"final"         kw   #c++
 	"friend"        kw   #c++
 	"namespace"     kw   #c++
 	"new"           kw   #c++
@@ -1266,6 +1267,7 @@ done
 	"operator"	kw   #c++
 	"or"		kw   #c++
 	"or_eq"		kw   #c++
+	"override"      kw   #c++
 	"private"	kw   #c++
 	"protected"	kw   #c++
 	"public"	kw   #c++
