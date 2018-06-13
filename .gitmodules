@@ -52,3 +52,15 @@
 [submodule "ep6/dijkstra"]
 	path = ep6/dijkstra
 	url = https://gist.github.com/bisqwit/09105bccf4f1d530027922d8f3bc51c0
+[submodule "ep6/transform_iterator"]
+	path = ep6/transform_iterator
+	url = https://gist.github.com/a263ac9f9b57d32559042677a32afa9d.git
+[submodule "ep6/inputter"]
+	path = ep6/dostools/inputter
+	url = git://bisqwit.iki.fi/inputter.git
+[submodule "ep6/textbox"]
+	path = ep6/textbox
+	url = https://gist.github.com/458048c60d271ab2536665cb81595c6b.git
+[submodule "ep6/dostools/that_editor"]
+	path = ep6/dostools/that_editor
+	url = git@github.com:bisqwit/that_editor.git
