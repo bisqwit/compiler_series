@@ -1,0 +1,801 @@
+; text.a65
+; ========
+;
+; A simple 8x16 text tile console
+;
+; Copyright 2018, Marcus Rowe <undisbeliever@gmail.com>
+; Distributed under The MIT License: https://opensource.org/licenses/MIT
+
+
+#include "registers.inc"
+#include "common.inc"
+#include "zero-macros.inc"
+
+;BUFFER_WIDTH  = 32
+;BUFFER_HEIGHT = 28
+
+#define BUFFER_WIDTH   32
+#define BUFFER_HEIGHT  28
+
+; text margins (in tiles)
+
+#define MARGIN_LEFT 2
+#define MARGIN_TOP  1
+;MARGIN_LEFT = 2
+;MARGIN_TOP  = 1
+#define MARGIN_RIGHT (BUFFER_WIDTH - MARGIN_LEFT)
+#define MARGIN_BOTTOM (BUFFER_HEIGHT - MARGIN_TOP)
+
+
+#define TEXT_WIDTH (MARGIN_RIGHT - MARGIN_LEFT)
+#define TEXT_HEIGHT ((MARGIN_BOTTOM - MARGIN_TOP) / 2)
+
+
+.zero
+; non-zero if the buffer is dirty
+; (byte dp)
+text_bufferDirty: .byt 0
+
+; String Pointer
+; (dp far addr)
+text_strPtr: .byt 0, 0, 0
+
+
+
+.bss
+
+; Offset between tilemap and tile character
+; Used to set order and palette
+; (word offset)
+text_tilemapOffset: .word 0
+
+; Location in the buffer
+; (word index)
+text_bufferPos: .word 0
+
+; End position of the buffer for the current line
+; (word index)
+text_bufferEndLinePos: .word 0
+
+; Temporary variable used by this module
+_text_tmp:  .word 0
+
+
+; A temporary buffer used for string generation
+text_tmpString: .byt _16_ZEROS()
+#define text_tmpStringSize 16
+
+; Padding character for string generation
+; (ascii byte)
+text_paddingChar: .byt 0
+
+
+
+.text
+
+; Initializes the text console and VRAM
+;
+; DMA: Uses DMA channel 0
+; REQUIRES: screen blank
+Text_Init:
+    phb
+    php
+
+    pea     REGISTER_DB | ($20 << 8)
+    plb
+    plp
+    ; DB = REGISTER_DB
+.a8
+.i16
+
+    jsr     ForceBlank
+
+
+    ; Copy font tiles to VRAM
+    ldx     #VRAM_TEXT_TILES
+    stx     VMADD
+
+    lda     #^FontTiles
+    ldx     #!FontTiles
+    ldy     #!FontTilesSize
+    jsr     TransferToVram
+
+
+    ; Copy font palette to VRAM
+    stz     CGADD
+
+    ldx     #FontPalette
+    lda     #^FontPalette
+    ldy     #FontPaletteSize
+    jsr     TransferToCgram
+
+
+    ; clear buffer and send buffer to vblank
+    jsr     Text_Clear
+    jsr     Text_VBlank
+
+
+    lda     #ASCII_ZERO
+    sta     text_paddingChar
+
+
+    ; Set color to palette 0, high priority
+    ldx     #TILEMAP_ORDER_FLAG
+    stx     text_tilemapOffset
+
+
+    plp
+    plb
+    rts
+
+
+
+; Uploads to buffer to VRAM if dirty.
+;
+; REQUIRES: 8 bit A, 16 bit Index, DP = 0, DB access registers
+; REQUIRES: screen blank
+;
+; MUST be called in NMI handler
+.a8
+.i16
+Text_VBlank:
+    lda     <text_bufferDirty
+    beq     +
+        ; Buffer dirty, mark clean and send to VRAM
+
+        stz     <text_bufferDirty
+
+        ldx     #VRAM_TEXT_MAP
+        stx     VMADD
+
+        ldx     #text_buffer
+        lda     #^text_buffer
+        ldy     #text_bufferSize
+
+        jmp     TransferToVram
+    +
+
+    rts
+
+
+
+; Clears the text buffer
+;
+; REQUIRES: DP = 0, DB access bss
+Text_Clear:
+    php
+
+    rep     #$30
+.a16
+.i16
+
+    lda     #0
+    ldx     #text_bufferSize - 2
+    -
+        sta     !text_buffer, x
+        dex
+        dex
+        bpl     -
+
+    sep     #$20
+.a8
+
+    lda     #1
+    sta     <text_bufferDirty
+
+    ldx     #0
+    ldy     #0
+    jsr     Text_SetCursor
+
+    plp
+    rts
+
+
+
+; Clears the current line
+;
+; REQUIRES: DB access bss
+Text_ClearCurrentLine:
+    php
+_Text_ClearCurrentLine_AfterPHP:
+
+    rep     #$30
+.a16
+.i16
+
+    lda     text_bufferPos
+    and     #~(BUFFER_WIDTH * 2 - 1)
+    tax
+
+    lda     #0
+    ldy     #BUFFER_WIDTH
+
+    -
+        sta     !text_buffer, x
+        sta     !text_buffer + 32 * 2, x
+        inx
+        inx
+        dey
+        bne     -
+
+
+    ; Mark buffer dirty
+    sep     #$20
+.a8
+    lda     #1
+    sta     <text_bufferDirty
+
+    plp
+    rts
+
+
+
+; Sets the color of the text
+;
+; REQUIRES: DB access bss
+; INPUT: A - text color (0 - 7)
+Text_SetColor:
+    php
+    rep     #$30
+.a16
+.i16
+    ; tilemapOffset = (tileMapOffset & ~PALETTE_MASK) | ((A & 7) << 10)
+
+    tax
+
+    lda     text_tilemapOffset
+    and     #~TILEMAP_PALETTE_MASK
+    sta     text_tilemapOffset
+
+    txa
+    and     #7
+    xba
+    asl
+    asl                             ; A << 10
+    ora     text_tilemapOffset
+    sta     text_tilemapOffset
+
+    plp
+    rts
+
+
+
+
+; Sets the cursor to the given position
+;
+; REQUIRES: DP = 0, DB access bss
+; INPUT: X = xPos
+; INPUT: Y = yPos
+Text_SetCursor:
+    php
+
+    rep     #$30
+.a16
+.i16
+    ; X/Y bounds checking
+    cpx     #TEXT_WIDTH
+    bcc     +
+        ldx     #0
+    +
+    cpy     #TEXT_HEIGHT
+    bcc     +
+        ldy     #0
+    +
+
+    ; text_bufferPos = (X * 2) + (Y * 32 * 2 * 2) + (MARGIN_LEFT * 2) + (MARGIN_TOP * 32 * 2)
+    ; text_bufferEndLinePos = text_bufferPos + TEXT_WIDTH * 2
+
+    tya
+    xba
+    lsr                     ; * 128
+    sta     _text_tmp
+
+    txa
+    asl
+    clc
+    adc     _text_tmp
+    clc
+    adc     #MARGIN_LEFT * 2 + MARGIN_TOP * 64
+    sta     text_bufferPos
+
+    clc
+    adc     #TEXT_WIDTH * 2
+    sta     text_bufferEndLinePos
+
+    plp
+    rts
+
+
+
+; Sets the text bufferPos to a given value
+;
+; REQUIRES: DB access bss
+; INPUT: X = bufferPos in the textBuffer
+Text_SetBufferPos:
+    php
+
+    rep     #$30
+.a16
+.i16
+    txa
+    and     #$07fe
+
+    cmp     #MARGIN_BOTTOM * BUFFER_WIDTH * 2
+    bcc     +
+        lda     #(MARGIN_TOP * BUFFER_WIDTH + MARGIN_LEFT) * 2
+    +
+    sta     text_bufferPos
+
+    clc
+    adc     #TEXT_WIDTH * 2
+    sta     text_bufferEndLinePos
+
+    plp
+    rts
+
+
+
+; Print a character to the buffer
+;
+; REQUIRES: DB access bss
+;
+; INPUT: A = character to print
+PrintChar:
+    php
+
+    rep     #$30
+.a16
+.i16
+    phy
+    ldy #0
+    and     #$00ff
+;    cmp     #ASCII_NEW_LINE
+;    beq     _PrintNewLine_AfterPHP
+
+;    sec
+;    sbc     #FONT_ASCII_DELTA
+;    cmp     #FONT_N_CHARS
+;    bcc     +
+;        ; Print blank character if character is outside valid range
+;        lda     #FONT_INVALID_CHAR_TILE
+;    +
+;
+    clc
+    adc     text_tilemapOffset
+
+    ; Print char to buffer
+
+    ldx     text_bufferPos
+
+    cmp     !text_buffer,x
+    beq +
+    iny
+    sta     !text_buffer,x
++   clc
+    adc     #FONT_N_CHARS
+    cmp     !text_buffer + 32 * 2,x
+    beq +
+    iny
+    sta     !text_buffer + 32 * 2,x
+
++   inx
+    inx
+
+;    cpx     text_bufferEndLinePos
+;    bcs     _PrintNewLine_AfterPHP
+
+    stx     text_bufferPos
+
+    ; Mark buffer dirty
+    sep     #$20
+.a8
+    tya
+    beq +
+    sta     <text_bufferDirty
+
++   ply
+    plp
+    rts
+
+
+#if 0
+; Prints a new line.
+;
+; Shifts the cursor to the start of the next line and clears it
+;
+; REQUIRES: DP = 0, DB access bss
+PrintNewLine:
+    php
+_PrintNewLine_AfterPHP:
+
+    sep     #$20
+.a8
+    ; Mark buffer as clean
+    ; (Prevents a glitch if this routine is interrupted by NMI)
+    stz     <text_bufferDirty
+
+
+    rep     #$31
+.a16
+.i16
+
+    ; Move cursor to next line
+
+    lda     text_bufferPos
+    and     #~(BUFFER_WIDTH * 2 - 1)
+    adc     #(BUFFER_WIDTH * 2 + MARGIN_LEFT) * 2
+
+    cmp     #MARGIN_BOTTOM * BUFFER_WIDTH * 2
+    bcc     +
+        lda     #(MARGIN_TOP * BUFFER_WIDTH + MARGIN_LEFT) * 2
+    +
+    sta     text_bufferPos
+    tax
+
+    clc
+    adc     #TEXT_WIDTH * 2
+    sta     text_bufferEndLinePos
+
+    jmp     _Text_ClearCurrentLine_AfterPHP
+#endif
+
+
+; Print a string to the buffer
+;
+; The string must be NULL (0) terminated
+;
+; REQUIRES: DP = 0, DB access bss
+;
+; INPUT: A:X = address of the string to print (MUST NOT cross bank boundary)
+; OUTPUT: X = end of string (address of the string terminator)
+PrintString:
+    php
+_PrintString_AfterPHP:
+
+    rep     #$30
+    sep     #$20
+.a8
+.i16
+    sta     <text_strPtr + 2
+    stx     <text_strPtr
+
+    -
+        lda     [text_strPtr]
+        beq     ++
+        jsr     PrintChar
+
+        inc     <text_strPtr
+        bne     +
+            inc     <text_strPtr + 1
+        +
+
+        bra     -
+    ++
+
+    ldx     text_strPtr
+
+    plp
+    rts
+
+
+#if 0
+; Prints a byte array as a hex string
+;
+; REQUIRES: 16 bit Index, DP = 0, DB access bss
+; INPUT: A:X - address to print
+;          Y - number of bytes to print
+PrintHexString:
+    php
+
+    rep     #$30
+    sep     #$20
+.a8
+.i16
+_PrintHexString_AfterSEP:
+
+    cpy     #0
+    beq     +++
+
+    sty     _text_tmp
+
+    sta     <text_strPtr + 2
+    stx     <text_strPtr
+
+    -
+        ; print hi nibble
+        lda     [text_strPtr]
+        lsr
+        lsr
+        lsr
+        lsr
+        cmp     #$0A
+        bcc     +
+            ; carry set
+            adc     #ASCII_A - $A - 1
+            bra     ++
+        +
+            ; carry clear
+            adc     #ASCII_ZERO
+        ++
+
+        jsr     PrintChar
+
+
+        ; print low nibble
+        lda     [text_strPtr]
+        and     #$0F
+        cmp     #$0A
+        bcc     +
+            ; carry set
+            adc     #ASCII_A - $A - 1
+            bra     ++
+        +
+            ; carry clear
+            adc     #ASCII_ZERO
+        ++
+
+        jsr     PrintChar
+
+
+        ; Increment text pointer
+        ; and decrement counter
+
+        rep     #$30
+    .a16
+        inc     <text_strPtr
+
+        dec     _text_tmp
+
+        sep     #$20
+    .a8
+        bne     -
+
++++
+    plp
+    rts
+
+
+
+; Prints the 16 bit value stored in the accumulator
+;
+; Uses `text_tmpString` to store the byte
+;
+; REQUIRES: 16 bit Index, DB access bss
+; INPUT: A - byte to print
+PrintHex_8A:
+    php
+
+    rep     #$30
+.a16
+.a16
+    sta     text_tmpString
+
+    ldy     #1
+
+_PrintHex_SetXA:
+    sep     #$20
+.a8
+    ldx     #text_tmpString
+    lda     #^text_tmpString
+
+    jmp     _PrintHexString_AfterSEP
+
+
+
+; Prints the 16 bit value stored in the accumulator
+;
+; Uses `text_tmpString` to store the byte
+;
+; REQUIRES: 16 bit Index, DB access bss
+; INPUT: A - word to print
+PrintHex_16A:
+    php
+
+    rep     #$30
+.a16
+.a16
+    sta     text_tmpString
+    ldy     #2
+    bra     _PrintHex_SetXA
+
+
+
+; Prints the 16 bit value stored in X index register
+;
+; Uses `text_tmpString` to store the byte
+;
+; REQUIRES: 16 bit Index, DB access bss
+; INPUT: X - word to print
+PrintHex_16X:
+    php
+
+    rep     #$30
+.a16
+.a16
+    stx     text_tmpString
+    ldy     #2
+    bra     _PrintHex_SetXA
+
+
+
+; Prints the 16 bit value stored in Y index register
+;
+; Uses `text_tmpString` to store the byte
+;
+; REQUIRES: 16 bit Index, DB access bss
+; INPUT: X - word to print
+PrintHex_16Y:
+    php
+
+    rep     #$30
+.a16
+.a16
+    sty     text_tmpString
+    ldy     #2
+    bra     _PrintHex_SetXA
+
+
+
+; Prints an unsigned integer to the buffer
+;
+; Will use `text_tmpString` as string storage space.
+;
+; REQUIRES: DP = 0, DB access bss
+;
+; NOTE: Uses division registers
+;
+; INPUT: Y = uint16 number
+Print_UY:
+    php
+
+    rep     #$10
+.i16
+
+    jsr     UY_ToString
+
+    sep     #$20
+.a8
+    lda     #$7e
+    jmp     _PrintString_AfterPHP
+
+
+
+; Prints a padded unsigned integer to the buffer
+;
+; Will use `text_tmpString` as string storage space.
+;
+; REQUIRES: DP = 0, DB access bss
+;
+; NOTE: Uses division registers
+;
+; INPUT: Y = uint16 number
+; INPUT: A = padding length
+PrintPadded_UY:
+    php
+
+    rep     #$10
+.i16
+
+    jsr     UY_ToPaddedString
+
+    sep     #$20
+.a8
+    lda     #$7e
+    jmp     _PrintString_AfterPHP
+
+
+
+; Converts an unsigned integer to a string.
+;
+; Will use `text_tmpString` as string storage space.
+;
+; REQUIRES: DP = 0, DB access bss
+;
+; NOTE: Uses division registers
+; NOTE: does not use _text_tmp
+;
+; INPUT: Y = uint16 number
+; OUTPUT: X = address of string (in bank 0x7e)
+UY_ToString:
+    phd
+    php
+
+    rep     #$30
+_UY_ToString_AfterRep:
+.a16
+.i16
+    lda     #WRDIV & 0xff00
+    tcd
+
+    sep     #$20
+.a8
+
+    ldx     #text_tmpString + text_tmpStringSize - 2
+
+    -
+        sty     <WRDIV
+        lda     #10
+        sta     <WRDIVB
+
+        ; wait 16 cycles
+        nop                                              ; 2
+        nop                                              ; 2
+        stz     text_tmpString + text_tmpStringSize - 1  ; 4 (set string terminator)
+        dex                                              ; 2
+        clc                                              ; 2
+        lda     #ASCII_ZERO                              ; 2
+        adc     <RDMPY                                   ; 2 instruction fetch
+
+        sta     !0,x
+
+        ldy     <RDDIV
+        bne     -
+
+    plp
+    pld
+    rts
+
+
+
+; Converts an unsigned integer to a padded string
+;
+; Will use `tmpString` as string storage space
+;
+; REQUIRES: 16 bit Index, DB access bss
+;
+; NOTE: uses division registers
+;
+; INPUT: Y = uint16 number
+;        A = padding length
+;        `text_paddingChar` = padding character
+; OUTPUT: X = address of string (in bank 0x7e)
+UY_ToPaddedString:
+
+; The start of the padding characters in text_tmpString
+; (word addr)
+#define _tps_paddingPos _text_tmp
+
+    php
+
+    rep     #$30
+.i16
+.a16
+    and     #0xff
+    cmp     #text_tmpStringSize - 2
+    bcc     +
+        lda     #text_tmpStringSize - 2
+    +
+
+    ; Calculate padding pos
+    ; paddingPos = text_tmpString + text_tmpStringSize - 1 - paddingLength
+
+    ; A = padding length
+    eor     #0xffff
+    sec
+    adc     #text_tmpString + text_tmpStringSize - 1
+    sta     _tps_paddingPos
+
+    jsr     UY_ToString
+
+
+    ; Add padding characters
+
+    cpx     _tps_paddingPos
+    bcc     +
+
+    sep     #$20
+.a8
+    lda     text_paddingChar
+-
+        dex
+        sta     !0,x
+        cpx     _tps_paddingPos
+        bcs     -
+
++
+    plp
+    rts
+#endif
+
+; vim: ft=asm:
+

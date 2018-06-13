@@ -1,0 +1,71 @@
+; resources.a65
+; =============
+;
+; Copyright 2018, Marcus Rowe <undisbeliever@gmail.com>
+; Distributed under The MIT License: https://opensource.org/licenses/MIT
+
+#include "common.inc"
+#include "zero-macros.inc"
+
+.data
+FontTiles:
+    #include "font-8x16.2bpp.inc"
+FontTilesEnd:
+
+
+;#define BGCOL $7FFF
+#define BGCOL   (2 + 32*2 + 32*64*4)
+
+#define INFCOL  (14 + 32*12 + 32*64*24)
+
+FontPalette:                           ; ANSI Colors
+	.word	BGCOL, $0000, $4e73, $6b3a ; Black   (0)
+	; Default input
+	.word	BGCOL, $001F, $4e73, $6b3a ; Red     (1)
+	; Char selection
+	;.word	BGCOL, $02E0, $4e73, $6b3a ; Green   (2)
+	.word   BGCOL, $7FFF, $7FFF, $6B3A
+	; Destination string
+	.word	BGCOL, $02FF, $4e73, $6b3a ; Yellow  (3)
+	
+	.word	BGCOL, $7C00, $4e73, $6b3a ; Blue    (4)
+	.word	BGCOL, INFCOL, $4e73, $6b3a ; Magenta (5)
+	.word	BGCOL, $3DE0, $4e73, $6b3a ; Cyan    (6)
+	.word	BGCOL, $3DEF, $4e73, $6b3a ; Gray    (7)
+FontPaletteEnd:
+
+.bss
+; Console buffer
+; (32 * 32 uint16)
+text_buffer:      .word _1024_ZEROS()
+text_buffer_end:
+
+; Allocating 512 bytes for stack to be safe
+; Because why not.
+STACK_TOP:        .byt _512_ZEROS()
+STACK_END:
+
+.zero
+; Constants work just fine as long as they are put in a segment
+; that contains no allocated bytes.
+; If the segment contains allocated bytes, all labels will
+; be relocated to a free slot in the designated memory area.
+
+text_bufferSize  = text_buffer_end - text_buffer
+FontTilesSize    = (FontTilesEnd - FontTiles)
+FontPaletteSize  = (FontPaletteEnd - FontPalette)
+FONT_N_CHARS     = (FontTilesSize / 32)
+FONT_ASCII_DELTA       = 0x00
+FONT_INVALID_CHAR_TILE = 0x3F
+
+ASCII_NEW_LINE      = 0x0A
+ASCII_SPACE         = 0x20
+ASCII_ZERO          = 0x30
+ASCII_A             = 0x41
+FONT_RIGHT_ARROW    = 0x1A
+FONT_LEFT_ARROW     = 0x00
+FONT_TEXT_CURSOR    = 0x5F
+FONT_TEXT_UNDERLINE = 0x60
+
+
+; vim: ft=asm:

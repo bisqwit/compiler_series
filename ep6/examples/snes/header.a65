@@ -1,0 +1,64 @@
+; This file is part of the snescom-asm demo - a demo of how to build a SNES program.
+; See https://bisqwit.iki.fi/source/snescom.html for details.
+
+; Begin assembling to this address.
+*= $00FF80
+
+RESET_HANDLER:
+        jmp @RESET
+
+NMI_16bit:
+        jmp @NMI_ROUTINE
+
+IRQ_16bit:
+        jmp @IRQ_ROUTINE
+
+;error vectors
+ABT_8bit: ABT_16bit:
+BRK_8bit: BRK_16bit:
+COP_8bit: COP_16bit:
+IRQ_8bit:
+NMI_8bit:
+        - lda $ABCDEF : bra -
+
+*= $00FFB0
+        ; Zero the area from $FFB0 - $FFFF
+        ; to ensure that the linker won't get clever
+        ; and fill it with small pieces of code.
+        .word 0,0,0,0, 0,0,0,0
+        .word 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0
+        .word 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0
+
+*= $00FFB0
+
+.byt "00"         ;2 bytes - company id
+.byt "TEST"       ;4 bytes - rom id
+
+EmptyBytes:
+
+*= $00FFC0
+.byt "FI_FI INFLECTION DEMO"
+     ;123456789012345678901; - max 21 chars
+
+*= $00FFD5     .byt $30  ;rom speed
+*= $00FFD6     .byt $02  ;rom type
+*= $00FFD7     .byt $08  ;rom size   256 kB
+*= $00FFD8     .byt $00  ;sram size (No SRAM)
+*= $00FFD9     .byt $04  ;rom region 4 = Finland
+*= $00FFDA     .byt $33  ;company id flag
+
+*= $00FFDC     .word 0,0 ;checksums
+
+*= $00FFE4     .word COP_16bit
+*= $00FFE6     .word BRK_16bit
+*= $00FFE8     .word ABT_16bit
+*= $00FFEA     .word NMI_16bit
+*= $00FFEE     .word IRQ_16bit
+*= $00FFF4     .word COP_8bit
+*= $00FFF8     .word ABT_8bit
+*= $00FFFA     .word NMI_8bit
+*= $00FFFC     .word RESET_HANDLER
+*= $00FFFE     .word BRK_8bit
+*= $00FFFE     .word IRQ_8bit
+
+// vim: ft=asm:

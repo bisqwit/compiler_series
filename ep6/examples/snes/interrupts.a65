@@ -1,0 +1,142 @@
+; interrupts.a65
+; ==============
+;
+; Copyright 2018, Marcus Rowe <undisbeliever@gmail.com>
+; Distributed under The MIT License: https://opensource.org/licenses/MIT
+
+
+#include "registers.inc"
+#include "common.inc"
+
+
+.bss
+
+; Buffered value of the INIDISP register
+; INIDISP is set to this value every VBlank
+;
+; Use this to set the screen brightness
+; (byte)
+inidispBuffer: .byt 0
+
+
+; Frame counter
+; Incremented every NMI Interrupt
+; (uint16)
+frameCounter: .word 0
+
+
+.text
+
+
+; Ignore IRQ Interrupts
+IRQ_ROUTINE:
+    rti
+
+
+; NMI Interrupt Routine
+NMI_ROUTINE:
+    rep     #$30
+.a16
+.i16
+    pha
+    phx
+    phy
+    phd
+    phb
+
+    lda     #0
+    tcd
+
+
+    ; Set DB access registers,
+    ; 8 bit A, 16 bit Index
+    pea     #(REGISTER_DB << 8) | $20
+    plp
+    plb
+.a8
+
+    ; Force VBlank to prevent PPU corruption if VBlank overruns
+    lda     #INIDISP_FORCE
+    sta     INIDISP
+
+
+    ; Reset NMI Flag
+    lda     RDNMI
+
+    jsr     Text_VBlank
+
+    ; Restore screen brightness
+    lda     inidispBuffer
+    sta     INIDISP
+
+    rep     #$30
+.a16
+
+    inc     frameCounter
+
+    plb
+    pld
+    ply
+    plx
+    pla
+
+    rti
+
+
+
+; Force the screen blank and disable interrupts
+ForceBlank:
+    php
+
+    sep     #$20
+.a8
+    ; Disable Interrupts
+    ; (Prevent NMI Handler from re-enabling screen)
+
+    lda     #0
+    sta     @NMITIMEN
+
+    lda     #INIDISP_FORCE
+    sta     @INIDISP
+
+    plp
+    rts
+
+
+
+; Enable the screen with a given brightness
+;
+; REQUIRES: DB access bss
+EnableScreen:
+    php
+
+    sep     #$20
+.a8
+    and     #0x0f
+    sta     inidispBuffer
+
+    ; Enable VBlank and autoJoy
+    ; (INIDISP will be set next NMI Interrupt)
+
+    lda     #NMITIMEN_VBLANK_FLAG | NMITIMEN_AUTOJOY_FLAG
+    sta     @NMITIMEN
+
+    plp
+    rts
+
+
+
+; Wait until the start of the next frame
+;
+; REQUIRES: DB access bss
+WaitFrame:
+    lda     frameCounter
+    -
+        wai
+        cmp     frameCounter
+        beq     -
+    rts
+
+
+; vim: ft=asm:
+

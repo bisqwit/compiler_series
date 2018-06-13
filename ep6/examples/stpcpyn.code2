@@ -1,0 +1,13 @@
+Length s:
+{
+    var result = 0;
+    while(*s++) { ++result; }
+    return result;
+}
+stpcpyn output,s,n:
+{
+    n = Length(s) - n;
+    while(n) { *output++ = *s++; --n; }
+    *output = 0;
+    return output;
+}

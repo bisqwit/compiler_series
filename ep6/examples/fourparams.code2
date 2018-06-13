@@ -1,0 +1,7 @@
+testfunc a,b,c,d: {
+  *testfunc=testfunc;
+  return a+b+c+d;
+}
+
+testcaller a,b,c,d:
+  return testfunc(a,b,c,d) + 1;

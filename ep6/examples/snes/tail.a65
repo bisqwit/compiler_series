@@ -1,0 +1,11 @@
+.include "common.inc"
+
+; Just some dummy markers so that we can get statistics of space usage
+.bss
+	.byt 0
+.zero
+	.byt 0
+.text
+	.byt $24
+.data
+	.byt $24

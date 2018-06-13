@@ -1,0 +1,926 @@
+; input-dialog.a65
+; ================
+;
+; Copyright 2018, Marcus Rowe <undisbeliever@gmail.com>
+; Distributed under The MIT License: https://opensource.org/licenses/MIT
+
+
+#include "registers.inc"
+#include "common.inc"
+
+
+#define CHAR_SELECTION_ROWS    3
+#define CHAR_SELECTION_COLUMNS 14
+
+
+#define DEFAULT_INPUT_STRING_COLOR   1
+#define DEFAULT_CHAR_SELECTION_COLOR 2
+
+
+#define DEFAULT_INPUT_STRING_XPOS 1
+#define DEFAULT_INPUT_STRING_YPOS 1
+
+#define DEFAULT_CHAR_SELECTION_YPOS 9
+#define CHAR_SELECTION_XPOS         0
+
+
+#define JOYPAD_REPEAT_DELAY_INITIAL  30
+#define JOYPAD_REPEAT_DELAY_CONTINUE  5
+
+#define JOYPAD_PREV_PAGE    (JOY_L)
+#define JOYPAD_NEXT_PAGE    (JOY_R | JOY_SELECT | JOY_X)
+#define JOYPAD_BACK         (JOY_B)
+#define JOYPAD_SELECT_CHAR  (JOY_A)
+
+
+.zero
+; Pointer to the string to print
+; (far addr)
+id_inputStringPtr:   .byt 0, 0, 0
+
+
+.bss
+
+; Temporary words used by the module
+; (word)
+_id_tmp0  .word 0
+_id_tmp1  .word 0
+_id_tmp2  .word 0
+
+
+; Location of the text bufferPos
+; Used to restore the text position when completed
+; (word)
+id_oldTextBufferPos: .word 0
+
+; Old value of the text tilemapOffset
+; Used to restore the text tilemapOffset
+; (word)
+id_oldTextTilemapOffset: .word 0
+
+
+; Pointer to the last character in the string
+; (addr)
+id_inputStringPtrEnd: .word 0
+
+; Current page
+; (byte)
+id_currentPage: .byt 0
+
+
+; Location of the input string
+; (word index)
+id_inputStringBufferPos: .word 0
+
+; Input string color
+; (byte)
+id_inputStringColor: .byt 0
+
+
+; Y position of the character selection text
+; (byte)
+id_charSelTextYpos: .byt 0
+
+; Character selection color
+; (byte)
+id_charSelColor: .byt 0
+
+
+; position of the character cursor
+; (2 x byte)
+id_charSelCursorXpos: .byt 0
+id_charSelCursorYpos: .byt 0
+
+; Previous position of the character cursor
+; (2 x byte)
+id_charSelPrevCursorXpos: .byt 0
+id_charSelPrevCursorYpos: .byt 0
+
+
+; The new buttons that were pressed on the current frame
+; (uint16)
+id_joypadPressed:   .word 0
+
+; The joypad state in the previous frame
+; (uint16)
+id_joypadPrevious:   .word 0
+
+; The joypad input mask for the next frame
+; (uint16)
+id_joypadInputMask:  .word 0
+
+; Countdown until the pressed button is repeated
+; (uint8)
+id_joypadRepeatDelay: .word 0
+
+
+
+.text
+
+
+; I have to hard code these values
+;#define InputDialog_PageCount 5
+;#define InputDialog_PageBank 0xc0
+#define InputDialog_PageCount 2
+
+.data
+; Text pages
+InputDialog_PageList:
+    .word   InputDialog_Page0
+    .word   InputDialog_Page1
+    ;.word   InputDialog_Page2
+    ;.word   InputDialog_Page3
+    ;.word   InputDialog_Page4
+
+
+InputDialog_Page0:
+    ;.byt "abcdefghij"
+    ;.byt "klmnopqrst"
+    ;.byt "uvwxyz .,'"
+    ;.byt "1234567890"
+    .byt "abcdefghij0123"
+    .byt "klmnopqrst4567"
+    .byt "uvwxyzéåäö89 !"
+
+InputDialog_Page1:
+    .byt "ABCDEFGHIJ,-'/"
+    .byt "KLMNOPQRST&*",$22,$5C
+    .byt "UVWXYZÉÅÄÖ+@~_"
+
+;InputDialog_Page2:
+;    .byt "\\/[]<=>?`\^"
+;    .byt 0x7b, 0x7c, 0x7d, 0x7e, 0xa1, 0xa2, 0xa3, 0xa4, 0xa4, 0xa5
+;    .byt 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf
+;    .byt 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9
+;
+;InputDialog_Page3:
+;    .byt 0xc0, 0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7, 0xba, 0xbb
+;    .byt 0xe0, 0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xc8, 0xbc, 0xbd
+;    .byt 0xc8, 0xc9, 0xca, 0xcb, 0xcc, 0xcd, 0xce, 0xcf, 0xbe, 0xbf
+;    .byt 0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xed, 0xee, 0xcf, 0x20, 0x20
+;
+;InputDialog_Page4:
+;    .byt 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0x20, 0x20
+;    .byt 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xd8, 0x80, 0x81
+;    .byt 0xd8, 0xd9, 0xda, 0xdb, 0xdc, 0xdd, 0xde, 0xdf, 0x81, 0x83
+;    .byt 0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xdf, 0x20, 0x20
+
+.text
+
+
+; Initialize the Input module
+;
+; INPUT: A:X - address of input string
+; INPUT: Y   - size of input string (including terminator, MUST NOT BE ZERO)
+InputDialog_Init:
+    phb
+    phd
+    php
+
+    pea     #0
+    pld
+
+    pea     #$80 | ($20 << 8)
+    plb
+    plp
+    ; DP = 0
+    ; DB = $80
+.a8
+.i16
+    jsr     InputDialog_SetInputString
+
+    ; Reset variables
+
+    stz     id_currentPage
+
+    stz     id_charSelCursorXpos
+    stz     id_charSelCursorYpos
+    stz     id_charSelPrevCursorXpos
+    stz     id_charSelPrevCursorYpos
+
+    lda     #DEFAULT_INPUT_STRING_COLOR
+    sta     id_inputStringColor
+
+    lda     #DEFAULT_CHAR_SELECTION_COLOR
+    sta     id_charSelColor
+
+    lda     #DEFAULT_CHAR_SELECTION_YPOS
+    sta     id_charSelTextYpos
+
+
+    ldx     #0xffff
+    stx     id_joypadInputMask
+    stx     id_joypadPrevious
+
+    ldx     #JOYPAD_REPEAT_DELAY_INITIAL
+    stx     id_joypadRepeatDelay
+
+    sep     #$30
+.a8
+.i8
+
+    ldx     #DEFAULT_INPUT_STRING_XPOS
+    ldy     #DEFAULT_INPUT_STRING_YPOS
+    jsr     InputDialog_SetInputTextPosition
+
+
+    ; Draw the first page
+    jsr     InputDialog_DrawPage
+
+    plp
+    pld
+    plb
+    rts
+
+
+
+; Process a single frame of the InputDialog module.
+;
+; This routine will update the cursor/page/inputString
+; depending on the state of the joypad
+;
+; REQUIRES: InputDialog_Init called
+InputDialog_ProcessFrame:
+    phb
+    phd
+    php
+
+    pea     #0
+    pld
+
+    pea     #$80 | (0 << 8)
+    plb
+    plp
+    ; DP = 0
+    ; DB = $80
+.a16
+.i16
+
+    jsr     _InputDialog_UpdateJoypadState
+
+
+    ; Change page if change page buttons pressed
+
+    lda     id_joypadPressed
+    bit     #JOYPAD_PREV_PAGE | JOYPAD_NEXT_PAGE
+    beq     ++
+        ; One of the change page buttons is pressed
+
+        bit     #JOYPAD_PREV_PAGE
+        beq     +
+            jsr     _InputDialog_PreviousPage
+            bra     ++
+        +
+            jsr     _InputDialog_NextPage
+    ++
+
+
+    ; Process Up/Down
+
+    sep     #$30
+.a8
+.i8
+    ldy     id_charSelCursorYpos
+
+    lda     id_joypadPressed + 1
+    bit     #JOYH_UP
+    beq     +
+        ; Up pressed
+        dey
+        bpl     +
+            ldy     #CHAR_SELECTION_ROWS - 1
+    +
+
+    ; A unchanged
+    bit     #JOYH_DOWN
+    beq     +
+        iny
+        cpy     #CHAR_SELECTION_ROWS
+        bcc     +
+            ldy     #0
+    +
+
+    sty     id_charSelCursorYpos
+
+
+    ; Process Left/Right
+
+    ldx     id_charSelCursorXpos
+
+    ; A = id_joypadPressed + 1
+    bit     #JOYH_LEFT
+    beq     +
+        dex
+        bpl     +
+            jsr     _InputDialog_PreviousPage
+            ldx     #CHAR_SELECTION_COLUMNS - 1
+            lda     id_joypadPressed + 1
+    +
+
+    bit     #JOYH_RIGHT
+    beq     +
+        inx
+        cpx     #CHAR_SELECTION_COLUMNS
+        bcc     +
+            jsr     _InputDialog_PreviousPage
+            ldx     #0
+            lda     id_joypadPressed + 1
+    +
+
+    stx     id_charSelCursorXpos
+
+
+    rep     #$30
+.a16
+.i16
+
+    ; Process back button
+    lda     id_joypadPressed
+    bit     #JOYPAD_BACK
+    beq     +
+        jsr     _InputDialog_CalcStringLength_Y
+
+        ; Y = length of string
+
+        dey
+        bmi     +
+
+            sep     #$20
+        .a8
+            lda     #0
+            sta     [id_inputStringPtr], y
+
+            rep     #$20
+        .a16
+
+            lda     id_joypadPressed
+    +
+
+
+    ; Process Select Char button
+
+    ; A = id_joypadPressed
+    bit     #JOYPAD_SELECT_CHAR
+    beq     +
+        jsr     _InputDialog_CalcStringLength_Y
+
+        ; test if can add character to string
+        tya
+        clc
+        adc     <id_inputStringPtr
+        cmp     id_inputStringPtrEnd
+        bcs     +
+            phy
+                jsr     InputDialog_GetSelectedChar
+            ply
+
+            ; Y = index of next character in string
+            ; set both character and terminator
+            and     #$00ff
+            sta     [id_inputStringPtr], y
+        +
+    +
+
+
+    ; Save text buffer state
+
+    ldx     text_bufferPos
+    stx     id_oldTextBufferPos
+    ldx     text_tilemapOffset
+    stx     id_oldTextTilemapOffset
+
+
+    jsr     _InputDialog_DrawCursor
+    jsr     _InputDialog_PrintInputString
+
+
+    ; Restore text state
+
+    ldx     id_oldTextTilemapOffset
+    stx     text_tilemapOffset
+    ldx     id_oldTextBufferPos
+    jsr     Text_SetBufferPos
+
+    plp
+    pld
+    plb
+    rts
+
+
+
+; Sets the address of the input string
+;
+; REQUIRES: DP = 0, DB = 0x80
+;
+; INPUT: A:X - address of input string
+; INPUT: Y   - size of input string (including terminator, MUST NOT BE ZERO)
+InputDialog_SetInputString:
+    php
+
+    ; set id_inputStringPtr and id_inputStringPtrEnd
+
+    rep     #$30
+    sep     #$20
+.a8
+.i16
+    stx     <id_inputStringPtr
+    sta     <id_inputStringPtr + 2
+
+    rep     #$30
+.a16
+    tya
+    clc
+    adc     <id_inputStringPtr
+    dec
+    sta     id_inputStringPtrEnd
+
+    sep     #$20
+.a8
+
+    ; Set string terminator
+    ; (just in case)
+
+    ; Y = string size (unchanged)
+    dey
+    lda     #0
+    sta     [id_inputStringPtr], y
+
+    plp
+    rts
+
+
+
+; Set the location of the input string on screen
+;
+; REQUIRES: DB = 0x80
+;
+; INPUT: X = xPos
+; INPUT: Y = yPos
+InputDialog_SetInputTextPosition:
+    php
+
+    rep     #$30
+.a16
+.i16
+
+    ; save old text bufferPos
+    lda     text_bufferPos
+    sta     id_oldTextBufferPos
+
+    jsr     Text_SetCursor
+
+    lda     text_bufferPos
+    sta     id_inputStringBufferPos
+
+    ; restore old settings
+    ldx     id_oldTextBufferPos
+    jsr     Text_SetBufferPos
+
+    plp
+    rts
+
+
+
+; Retrieve the currently selected character
+;
+; NOTE: Uses multiplication registers
+;
+; REQUIRES: DB = 0x80
+; RETURN: A = selected char
+InputDialog_GetSelectedChar:
+
+    php
+
+    ; char addr = id_charSelCursorYpos * CHAR_SELECTION_COLUMNS
+    ;             + id_charSelCursorXpos
+    ;             + InputDialog_PageList[id_currentPage]
+
+    sep     #$30
+.a8
+.i16
+
+    lda     id_charSelCursorYpos
+    sta     @WRMPYA
+
+    lda     #CHAR_SELECTION_COLUMNS
+    sta     @WRMPYB
+
+
+    lda     id_currentPage
+    cmp     #InputDialog_PageCount
+    bcc     +
+        lda     #0
+        sta     id_currentPage
+    +
+
+    rep     #$30
+.a16
+.i16
+    and     #$00ff
+    asl
+    tax
+    lda     @InputDialog_PageList, x
+    sta     _id_tmp0
+
+    lda     id_charSelCursorXpos
+    and     #$00ff
+    clc
+    adc     @RDMPY
+    clc
+    adc     _id_tmp0
+    tax
+;
+;    ;lda     @(InputDialog_PageBank << 16), x
+    lda     !0,x
+    and     #$00ff
+    plp
+    rts
+
+
+
+; Draw the current page of the character selection menu
+;
+; REQUIRES: DB = 0x80
+InputDialog_DrawPage:
+
+#define _dp_charAddr        _id_tmp0
+#define _dp_currentLine     _id_tmp1
+#define _dp_charsLeftInLine _id_tmp2
+
+    php
+_InputDialog_DrawPage_AfterPHP:
+
+    rep     #$30
+    sep     #$20
+.a8
+.i16
+
+    ; Save old text bufferPos and tilemapOffset
+    ldx     text_bufferPos
+    stx     id_oldTextBufferPos
+
+    ldx     text_tilemapOffset
+    stx     id_oldTextTilemapOffset
+
+
+    lda     id_charSelColor
+    jsr     Text_SetColor
+
+
+    ; Get currentPageIndex
+
+    lda     id_currentPage
+    cmp     #InputDialog_PageCount
+    bcc     +
+        lda     #0
+        sta     id_currentPage
+    +
+
+    rep     #$30
+.a16
+.i16
+    and     #$00ff
+    asl
+    tax
+    lda     @InputDialog_PageList, x
+
+    sta     _dp_charAddr
+    stz     _dp_currentLine
+
+    --
+.i16
+        ; Set cursor position
+        sep     #$30
+.a8
+.i8
+        lda     id_charSelTextYpos
+        clc
+        adc     _dp_currentLine
+        tay
+        ldx     #CHAR_SELECTION_XPOS
+        jsr     Text_SetCursor
+
+
+        ; Draw Line
+
+        rep     #$10
+.a8
+.i16
+        lda     #CHAR_SELECTION_COLUMNS
+        sta     _dp_charsLeftInLine
+
+        -
+            lda     #ASCII_SPACE
+            jsr     PrintChar
+
+            ldx     _dp_charAddr
+	    lda     !0,x
+            ;lda     @(InputDialog_PageBank << 16), x
+            inx
+            stx     _dp_charAddr
+
+            ; A = character to print
+            jsr     PrintChar
+
+            dec     _dp_charsLeftInLine
+            bne     -
+
+
+        ; Increment currentLine, loop if unfinished
+
+        lda     _dp_currentLine
+        inc
+        sta     _dp_currentLine
+
+        cmp     #CHAR_SELECTION_ROWS
+        bcc     --
+
+
+    jsr     _InputDialog_DrawCursor
+
+
+    ; Restore text state
+
+    ldx     id_oldTextTilemapOffset
+    stx     text_tilemapOffset
+
+    ldx     id_oldTextBufferPos
+    jsr     Text_SetBufferPos
+
+    plp
+    rts
+
+
+
+; Go to the previous page
+;
+; REQUIRES: DB = 0x80
+_InputDialog_PreviousPage:
+    php
+
+    sep     #$20
+.a8
+    lda     id_currentPage
+    dec
+    bpl     +
+        lda     #InputDialog_PageCount - 1
+    +
+    sta     id_currentPage
+
+    jmp     _InputDialog_DrawPage_AfterPHP
+
+
+
+; Go to the next page
+;
+; REQUIRES: DB = 0x80
+_InputDialog_NextPage:
+    php
+
+    sep     #$20
+.a8
+    inc     id_currentPage
+
+    jmp     _InputDialog_DrawPage_AfterPHP
+
+
+
+; Draws the cursor on the screen
+;
+; NOTE: Does not save/restore the text bufferPos or tilemapOffset
+;
+; REQUIRES: DB = 0x80
+_InputDialog_DrawCursor:
+    php
+
+    sep     #$30
+.a8
+.i8
+    lda     id_charSelColor
+    jsr     Text_SetColor
+
+
+    ; Print spaces on previous cursor position
+
+    sep     #$30
+.a8
+.i8
+    lda     id_charSelPrevCursorXpos
+    asl
+    clc
+    adc     #CHAR_SELECTION_XPOS
+    tax
+
+    lda     id_charSelPrevCursorYpos
+    clc
+    adc     id_charSelTextYpos
+    tay
+
+    jsr     Text_SetCursor
+
+
+    lda     #ASCII_SPACE
+    jsr     PrintChar
+
+    ; skip over letter
+    rep     #$10
+.a8
+.i16
+    ldx     text_bufferPos
+    inx
+    inx
+    stx     text_bufferPos
+
+    lda     #ASCII_SPACE
+    jsr     PrintChar
+
+
+    ; Print arrows on current cursor location
+
+    sep     #$30
+.a8
+.i8
+    lda     id_charSelCursorXpos
+    asl
+    clc
+    adc     #CHAR_SELECTION_XPOS
+    tax
+
+    lda     id_charSelCursorYpos
+    clc
+    adc     id_charSelTextYpos
+    tay
+
+    jsr     Text_SetCursor
+
+
+    lda     #FONT_RIGHT_ARROW
+    jsr     PrintChar
+
+    ; skip over letter
+    rep     #$10
+.a8
+.i16
+    ldx     text_bufferPos
+    inx
+    inx
+    stx     text_bufferPos
+
+    lda     #FONT_LEFT_ARROW
+    jsr     PrintChar
+
+
+    ; Set previous cursor position to current cursor position
+
+    ; (index is 16 bit, also copies yPos)
+    ldx     id_charSelCursorXpos
+    stx     id_charSelPrevCursorXpos
+
+    plp
+    rts
+
+
+
+; Prints the inputString to screen.
+;
+; NOTE: Does not save/restore the text bufferPos or tilemapOffset
+;
+; REQUIRES: DB = 0x80
+_InputDialog_PrintInputString:
+    php
+
+    rep     #$30
+    sep     #$20
+.a8
+.i16
+
+    lda     id_inputStringColor
+    jsr     Text_SetColor
+
+
+    ldx     id_inputStringBufferPos
+    jsr     Text_SetBufferPos
+
+
+    ldx     <id_inputStringPtr
+    lda     <id_inputStringPtr + 2
+    jsr     PrintString
+
+
+    ; Print cursor characters
+    lda #8
+    bit frameCounter
+    beq +
+    lda #FONT_TEXT_CURSOR
+    bra ++
++   lda #FONT_TEXT_UNDERLINE
+++
+-
+    cpx     id_inputStringPtrEnd
+    bcs     +
+        phx
+
+            jsr     PrintChar
+            lda #FONT_TEXT_UNDERLINE
+
+        plx
+        inx
+        bra     -
+    +
+
+    plp
+    rts
+
+
+
+; Calculate the length of the input string
+;
+; REQUIRES: DB = 0x80
+; OUTPUT: Y = length of string
+_InputDialog_CalcStringLength_Y:
+    php
+
+    rep     #$30
+    sep     #$20
+.a8
+.a16
+
+    ldy     #-1
+
+    -
+        iny
+        lda     [id_inputStringPtr], y
+        bne     -
+
+    plp
+    rts
+
+
+
+; Updates the joypad variables
+;
+; REQUIRES: DB = 0x80
+_InputDialog_UpdateJoypadState:
+    php
+    sep     #$20
+.a8
+
+    ; Wait until AutoJoy is over
+    -
+        lda     HVBJOY
+        bit     #HVBJOY_AUTOJOY
+        bne     -
+
+    rep     #$30
+.a16
+.i16
+
+    lda     @JOY1
+    bit     #JOYL_TYPE_MASK
+    beq     +
+        ; if not a controller, ignore input
+        lda     #0
+    +
+    tay
+    ldx     id_joypadRepeatDelay
+
+    ; Y = JOY1
+    ; X = repeatDelay
+
+    cmp     id_joypadPrevious
+    beq     +
+        ; Joypad input has changed, reset delay
+
+        ldx     #JOYPAD_REPEAT_DELAY_INITIAL - 1
+    +
+    sty     id_joypadPrevious
+
+
+    ; A = JOY1
+    and     id_joypadInputMask
+    sta     id_joypadPressed
+
+
+    dex
+    bpl     +
+        ; repeatDelay == 0
+        ldx     #JOYPAD_REPEAT_DELAY_CONTINUE - 1
+
+        ; allow all buttons next frame
+        ldy     #0
+    +
+
+    ; Y = JOY1 or 0
+    tya
+
+    eor     #$ffff
+    sta     id_joypadInputMask
+
+    stx     id_joypadRepeatDelay
+
+    plp
+    rts
+
+
+; vim: ft=asm:
+

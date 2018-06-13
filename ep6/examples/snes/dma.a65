@@ -1,0 +1,142 @@
+; dma.a65
+; =======
+;
+; DMA routines
+;
+; Copyright 2018, Marcus Rowe <undisbeliever@gmail.com>
+; Distributed under The MIT License: https://opensource.org/licenses/MIT
+
+
+#include "registers.inc"
+#include "common.inc"
+
+.text
+
+
+; Clears a block of VRAM
+;
+; DMA: Uses DMA channel 0
+; REQUIRES: DB access registers
+; REQUIRES: Screen blank
+;
+; INPUT: X - vram address
+; INPUT: Y - bytes to clear
+ClearVram:
+    php
+
+    rep     #$30
+    sep     #$20
+.a8
+.i16
+
+    stx     VMADD
+    sty     DAS0
+
+    lda     #VMAIN_INCREMENT_HIGH | VMAIN_INCREMENT_1
+    sta     VMAIN
+
+    ldy     #DMAP_DIRECTION_TO_PPU | DMAP_ADDRESS_FIXED | DMAP_TRANSFER_2REGS | ((VMDATA & 0xff) << 8)
+    sty     DMAP0       ; also sets DDAD0
+
+    ldx     #EmptyBytes
+    stx     A1T0
+    stz     A1B0
+
+    lda     #MDMAEN_DMA0
+    sta     MDMAEN
+
+    plp
+    rts
+
+
+
+; Clears a block a CGRAM
+;
+; DMA: Uses DMA channel 0
+; REQUIRES: DB access registers
+; REQUIRES: Screen blank
+;
+; INPUT: X - starting color
+; INPUT: Y - number of colors
+ClearCgram:
+    php
+
+    rep     #$30
+    sep     #$10
+.a16
+.i8
+
+    stx     CGADD
+
+    tya
+    asl
+    sta     DAS0
+
+    lda     #DMAP_DIRECTION_TO_PPU | DMAP_ADDRESS_FIXED | DMAP_TRANSFER_1REG | ((CGDATA & 0xff) << 8)
+    sta     DMAP0       ; also sets BBAD0
+
+    stz     A1B0 - 1
+    lda     #EmptyBytes
+    sta     A1T0
+
+    ldx     #MDMAEN_DMA0
+    stx     MDMAEN
+
+    plp
+    rts
+
+
+
+; Transfers a block of memory to VRAM
+;
+; DMA: Uses DMA channel 0
+; REQUIRES: 8 bit A, 16 bit Index, DB access registers
+; REQUIRES: Screen Blank
+;
+; INPUT: A:X address
+; INPUT: Y   size (in bytes)
+.a8
+.i16
+TransferToVram:
+    stx     A1T0
+    sta     A1B0
+    sty     DAS0
+
+    lda     #VMAIN_INCREMENT_1 | VMAIN_INCREMENT_HIGH
+    sta     VMAIN
+
+    ldx     #DMAP_DIRECTION_TO_PPU | DMAP_ADDRESS_INCREMENT | DMAP_TRANSFER_2REGS | ((VMDATA & 0xff) << 8)
+    stx     DMAP0
+
+    lda     #MDMAEN_DMA0
+    sta     MDMAEN
+    rts
+
+
+
+; Transfers a block of memory to CGRAM
+;
+; DMA: Uses DMA channel 0
+; REQUIRES: 8 bit A, 16 bit Index, DB access registers
+; REQUIRES: Screen Blank
+;
+; INPUT: A:X address
+; INPUT: Y - size (in bytes)
+.a8
+.i16
+TransferToCgram:
+    stx     A1T0
+    sta     A1B0
+    sty     DAS0
+
+    ldx     #DMAP_DIRECTION_TO_PPU | DMAP_ADDRESS_INCREMENT | DMAP_TRANSFER_1REG | ((CGDATA & 0xff) << 8)
+    stx     DMAP0       ; also sets BBAD0
+
+    lda     #MDMAEN_DMA0
+    sta     MDMAEN
+
+    rts
+
+
+; vim: ft=asm:
+

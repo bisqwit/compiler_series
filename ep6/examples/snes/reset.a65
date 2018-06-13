@@ -1,0 +1,271 @@
+; reset.a65
+; =========
+;
+; SNES Reset routines
+;
+; Copyright 2018, Marcus Rowe <undisbeliever@gmail.com>
+; Distributed under The MIT License: https://opensource.org/licenses/MIT
+
+
+#include "registers.inc"
+#include "common.inc"
+#include "zero-macros.inc"
+
+
+.text
+
+RESET:
+    ; switch to native mode
+    sei
+    clc
+    xce
+
+    rep     #$38            ; 16 bit A, 16 bit Index, Decimal mode off
+.a16
+.i16
+
+    ldx     #STACK_END - 1
+    txs                     ; Setup stack
+
+    lda     #0
+    tcd                     ; Reset Direct Page
+
+    sep     #$20
+.a8
+
+    ; Set Data Bank
+
+    lda     #REGISTER_DB
+    pha
+    plb
+
+    ; Enable FastROM
+    lda     #MEMSEL_FASTROM
+    sta     MEMSEL
+
+    jsr     ClearVramOamAndCgram
+
+
+    ; Clear the WRAM
+    ; Setup DMA Channel 0 for WRAM
+
+    ldx     #0
+    stx     WMADDL
+    stz     WMADDH
+
+    ldy     #DMAP_DIRECTION_TO_PPU | DMAP_ADDRESS_FIXED | DMAP_TRANSFER_1REG | ((WMDATA & 0xff) << 8)
+    sty     DMAP0
+
+    ; X = 0
+    stx     DAS0
+
+    ldy     #!EmptyBytes
+    sty     A1T0
+    stz     A1B0
+
+    lda     #MDMAEN_DMA0
+    sta     MDMAEN
+
+    ; DSA0 is 0, no need to set it again
+    sta     MDMAEN
+
+    jsr     ResetRegisters
+
+    ; Jump to Main, but use $80 as the PBR
+    ;lda #REGISTER_DB
+    ;pha
+    ;rep #$20
+    ;.al
+    ;pea #Main-1
+    ;rtl
+    ;jmp     Main
+    jmp @Main
+
+
+
+; Clears the VRAM, OAM and CGRAM
+;
+; Fill the VRAM and CGRAM with 0 bytes
+; Moves all the OAM sprites offscreen
+;
+; REQUIRES: DB access registers
+; MODIFIES: Disables Interrupts and HDMA, Forces screen blank
+ClearVramOamAndCgram:
+    phd
+    php
+
+    rep     #$30
+    sep     #$20
+.a8
+.i16
+
+    ; Disable interrupts and HDMA
+    stz     NMITIMEN
+    stz     HDMAEN
+
+    lda     #INIDISP_FORCE
+    sta     INIDISP
+
+    ldx     #0
+    ldy     #0
+    jsr     ClearVram
+
+    ldx     #0
+    ldy     #0
+    jsr     ClearCgram
+
+    bra     _ClearOam_AfterPushRegs
+
+
+
+; Moves all the OAM sprites offscreen
+;
+; REQUIRES: DB access registers
+; MODIFIES: Disables Interrupts and HDMA, Forces screen blank
+ClearOam:
+    phd
+    php
+
+_ClearOam_AfterPushRegs:
+
+    rep     #$30
+.a16
+    lda     #$2100
+    tcd
+
+    sep     #$30
+.a8
+.i8
+
+    ; Disable interrupts and HDMA
+    stz     NMITIMEN
+    stz     HDMAEN
+
+    lda     #INIDISP_FORCE
+    sta     <INIDISP
+
+
+    ; Move all objects offscreen
+    ;  Set yPos to 240 and size to small
+
+    stz     <OAMADDL
+    stz     <OAMADDH
+
+    ldy     #240
+    lda     #128
+-
+        stz     <OAMDATA    ; x
+        sty     <OAMDATA    ; y
+        stz     <OAMDATA    ; char
+        stz     <OAMDATA    ; attr
+
+        dec
+        bne     -
+
+
+    ldx     #128 / 4
+-
+        stz     <OAMDATA
+        dex
+        bne     -
+
+    plp
+    pld
+    rts
+
+
+
+; Resets the registers to a good initial state
+;
+; Requires 6 bytes of stack space
+ResetRegisters:
+    php
+    phd
+
+    rep     #$30
+.a16
+    lda     #0x2100
+    tcd
+
+    sep     #$30
+.a8
+.i8
+
+    ; Disable Interrupts and HDMA
+    ; A = 0
+
+    sta     @NMITIMEN
+    sta     @HDMAEN
+
+    ; Force screen blank
+
+    lda     #INIDISP_FORCE
+    sta     <INIDISP
+
+    stz     <OBSEL
+
+
+    ; Registers $210d - $2114
+    ; BG Scroll Locations - write twice
+    ; horizontal offset set to 0
+    ; vertical offset set to -1
+    ldx     #$2114 - $210d - 1
+    lda     #0xff
+-
+        stz     <$0d,x
+        stz     <$0d,x
+        sta     <$0e,x
+        sta     <$0e,x
+        dex
+        dex
+        bpl     -
+
+
+    ; Registers $2105 - $210c
+    ; BG settings and VRAM base addresses
+    ldx     #$210c - $2105
+-
+        stz     <$05,x
+        dex
+        bpl     -
+
+
+    ; Skipping Mode 7 registers
+
+    ; Increment by 1 when reading/writing VMADDH
+    lda     #VMAIN_INCREMENT_HIGH | VMAIN_INCREMENT_1
+    sta     <VMAIN
+
+
+    ; Registers $2123 - $2133
+    ; Window Settings, BG/OBJ designation, Color Math, Screen Mode
+    ; All disabled
+    ldx     #$2133 - $2123
+-
+        stz     <$23,x
+        dex
+        bpl     -
+
+
+    ; Reset all the DMA registers
+    ; Registers $4300 - $437f
+
+    rep     #$20
+.a16
+    lda     #$4300
+    tcd
+
+    ldx     #0x7f - 1
+-
+        stz     <0, x
+        dex
+        dex
+        bpl     -
+
+    pld
+    plp
+    rts
+
+
+; vim: ft=asm:
+

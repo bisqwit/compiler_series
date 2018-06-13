@@ -1,0 +1,202 @@
+// Returns true if c (char) is found in s (string).
+find c,s:
+{
+    return (var k = *s) ? k==c ? s : find(c,s+1) : 0;
+}
+strend s:               { while(*s) ++s; return s; }
+Length s:               return strend(s)-s;
+
+// Returns nth character of string counted from end (1=last, 2=second last, ...)
+LastCharN s,n:          return strend(s)[-n];
+
+// Returns true if the symbol definitely is a vowel
+IsVowel c:              return find(c, "aeiouyäöåéAEIOUYÄÖÅÉ");
+
+// Returns true if the symbol is something, that when pronounced, ends with a vowel
+IsVowelTypeChar c:      return find(c, "aeiouyäöåéAEIOUYÄÖÅÉ0123456");
+
+// Returns true if the symbol is a numeric digit
+IsNumber c:             return find(c, "0123456789");
+
+// Return true if the conjugation suffix for this name should contain äöy instead of aou
+// This is determined by presence of definite back-vowel or front-vowel,
+// or lacking those, presence of middle-vowel, or lacking that, whatever the last letter is.
+IsFront s:
+{
+    var p = strend(s);
+    while(p != s)
+    {
+        var c = *--p;
+        if(find(c, "aouAOU02368")) return 0; // Definitely looks like pronounced with back-vowels
+        if(find(c, "äöyÄÖY14579")) return 1; // Definitely looks like pronounced with front-vowels
+    }
+    // Might be front-vowel if we get no other clue
+    while((var c = *p)) { if(find(c, "eiéEIÉ")) return 1; ++p; }
+    // Do final guess: If it ends with hkqåHKQÅ, it's back-vowel type.
+    return !find(p[-1], "hkqåHKQÅ");
+}
+
+// Return true if the character name looks impossible to pronounce.
+// This applies when the length is <= 1, or when there are no vowels,
+// or when there are numbers after the last vowel.
+IsAbbrev s:
+{
+    var len = Length(s);
+    if(len == 1) return 1;
+    while(len)
+    {
+        var c = s[--len];
+        if(IsNumber(c)) return 1;
+        if(IsVowel(c)) return 0;
+    }
+    return 1;
+}
+
+//Judge ch,pattern:
+//{
+//  var c = *pattern;
+//  if(c == 44) { return IsVowelTypeChar(ch) ? ++pattern : 0; }
+//  if(c == 95) { return IsVowel(ch)         ? ++pattern : 0; }
+//  if(c == 45) { return find(ch, "aAäÄ")    ? ++pattern : 0; }
+//  return (ch == c || ch == pattern[1]) ? pattern+2 : 0;
+//}
+//EndPattern s, pattern:
+//{
+//    var p = strend(s);
+//    while(pattern && (var pat1 = *pattern))
+//    {
+//        if(p == s) return 0;
+//        pattern = Judge(*--p, pattern);
+//    }
+//    return pattern;
+//}
+EndPattern s, pattern:
+{
+    var p = strend(s);
+    while(var c = *pattern)
+    {
+        if(p == s) return 0;
+        var done = 0;
+        if(!done && c == 44) { if(!IsVowelTypeChar(*p)) return 0; ++pattern; done = 1; }
+        if(!done && c == 95) { if(!IsVowel(*p))         return 0; ++pattern; done = 1; }
+        if(!done && c == 45) { if(!find(*p, "aAäÄ"))    return 0; ++pattern; done = 1; }
+        if(!done)
+        {
+            if((var ch = *p) != c && ch != pattern[1]) return 0;
+            pattern += 2;
+        }
+    }
+    return pattern;
+}
+
+IsEs s:    return EndPattern(s, "sS,");
+IsDe s:    return EndPattern(s, "eEdD");
+IsNen s:   return EndPattern(s, "nNeEnN");
+IsAki s:   return EndPattern(s, "iIkK-");
+IsAlien s: return EndPattern(s, "wWoO");
+IsKKV s:   return (var k=EndPattern(s, "_kKkK")) ? k : (k=EndPattern(s, "_pPpP")) ? k : EndPattern(s, "_tTtT");
+IsV s:     return EndPattern(s, ",");
+IsTu s:    return (var k=EndPattern(s, "uUtT")) ? k : EndPattern(s, "yYtT");
+// Lämmin: (soft)Lämpimän, (ess)Lämpimänä, (part)Lämmintä, (il)Lämpimään
+// Edwin:  (soft)Edwinin, (ess)Edwininä, (part)Edwiniä, (il)Edwiniin
+
+// Like standard stpcpy, but returns pointer to end of the string
+stpcpy output,s:
+{
+    while(var c = *s) { *output++ = c; ++s; }
+    *output = 0;
+    return output;
+}
+// Like strpcpy, but copy all but last N characters
+stpcpyn output,s,n:
+{
+    n = Length(s) - n;
+    while(n) { *output++ = *s++; --n; }
+    *output = 0;
+    return output;
+}
+
+// Like stpcpy but for single char.
+append output,c:
+{
+    *output = c;   // Place character
+    *++output = 0; // Place end marker
+    return output; // Return pointer to end of string
+}
+
+Outcome output,s,suffix:
+{
+    var n = suffix[0]-48;
+    var c = suffix[1]-48;
+    output = stpcpyn(output,s,n);
+    return c ? append(output, LastCharN(s,c))
+             : stpcpy(output, suffix+2);
+}
+
+SoftAndEssive s,dum1,dum2,output,ess:
+{
+    if(IsAlien(s))        return Outcome(output,s, "00'");
+    if(IsAbbrev(s))       return Outcome(output,s, "00:");
+    if(IsEs(s))           return Outcome(output,s, "10kse");
+    if(IsDe(s))           return Outcome(output,s, "20tee");
+    if(IsNen(s))          return Outcome(output,s, "30se");
+    if(!ess && IsKKV(s))  return Outcome(output,s, "21");
+    if(IsAki(s))          return Outcome(output,s, "20e");
+    if(IsV(s))            return Outcome(output,s, "00");
+    return                       Outcome(output,s, "00i");
+}
+
+// Outputs the stem of the word for most conjugation. Returns pointer to end.
+SoftStem s,dum1,dum2,output: return SoftAndEssive(s,0,0,output,0);
+
+// Outputs the stem of the word for partitive conjugation. Returns pointer to end.
+PartitiveStem s,dum1,dum2,output:
+{
+    var c = LastCharN(s, 1), t = "flmnrswxFLMNRSWX479", n = "01234568";
+    if(IsAlien(s))        return Outcome(output,s, "00't");
+    if(IsAbbrev(s))
+    {
+        if(find(c, t))    return Outcome(output,s, "00:ä");
+        if(find(c, "zZ")) return Outcome(output,s, "00:a");
+        if(find(c, n))    return Outcome(output,s, "00:");
+        return                   Outcome(output,s, "00:t");
+    }
+    if(IsEs(s))           return Outcome(output,s, "00t");
+    if(IsDe(s))           return Outcome(output,s, "00tt");
+    if(IsNen(s))          return Outcome(output,s, "30st");
+    if(IsAki(s))          return Outcome(output,s, "10e");
+    if(IsV(s))            return Outcome(output,s, "00");
+    return                       Outcome(output,s, "00i");
+}
+
+// Outputs the stem of the word for essive conjugation. Returns pointer to end.
+EssiveStem s,dum1,dum2,output: return SoftAndEssive(s,1,1,output,1);
+
+// Outputs the stem of the word for illative conjugation. Returns pointer to end.
+a s: return "aä"[IsFront(s) ? 1 : 0];
+IllativeStem s,dum1,dum2,output:
+{
+    if(IsAlien(s))  { return Outcome(output,s, "00'hu"); }
+    if(IsAbbrev(s)) { var k = a(s); output = append(Outcome(output,s, "00:"), k); return append(output, output[-1]); }
+    if(IsDe(s))     { output = Outcome(output,s, "20teese");                      return append(output, output[-1]); }
+    if(IsKKV(s))    { output = Outcome(output,s, "11");                           return append(output, output[-1]); }
+    output = SoftAndEssive(s,0,0,output,0);                                       return append(output, output[-1]);
+}
+DoSuff output,s,function,suf:
+{
+    output = stpcpy(function(s,0,0,output), suf+1);
+    if(suf[0] != 48) output = append(output, a(s));
+    return output;
+}
+
+Do_N  output,s:  return DoSuff(output,s,SoftStem,     "0n");
+Do_A  output,s:  return DoSuff(output,s,PartitiveStem,"1");
+Do_SSA output,s: return DoSuff(output,s,SoftStem,     "1ss");
+Do_STA output,s: return DoSuff(output,s,SoftStem,     "1st");
+Do_LLA output,s: return DoSuff(output,s,SoftStem,     "1ll");
+Do_LTA output,s: return DoSuff(output,s,SoftStem,     "1lt");
+Do_TTA output,s: return DoSuff(output,s,SoftStem,     "1tt");
+Do_NA  output,s: return DoSuff(output,s,EssiveStem,   "1n");
+Do_HUN output,s: return DoSuff(output,s,IllativeStem, "0n");
+Do_LLE output,s: return DoSuff(output,s,SoftStem,     "0lle");
+Do_KSI output,s: return DoSuff(output,s,SoftStem,     "0ksi");

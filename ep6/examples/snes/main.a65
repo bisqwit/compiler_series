@@ -1,0 +1,405 @@
+; main.a65
+; ========
+;
+; Copyright 2018, Marcus Rowe <undisbeliever@gmail.com>
+; Distributed under The MIT License: https://opensource.org/licenses/MIT
+
+
+#include "registers.inc"
+#include "common.inc"
+#include "zero-macros.inc"
+
+
+.bss
+
+inputString:       .byt _32_ZEROS()
+destinationString: .byt _32_ZEROS()
+
+#define  inputStringSize 29
+
+
+
+.text
+
+; Main routine
+; REGISTERS: DB = REGISTER_DB, DP = 0
+Main:
+    rep     #$30
+    sep     #$20
+.a8
+.i16
+
+    ; Setup PPU
+
+    jsr     ForceBlank
+
+    lda     #BGMODE_MODE1_BG3_PRIORITY
+    sta     BGMODE
+
+    lda     #BGXSC_VAL(BG1_MAP, 32X32)
+    sta     BG1SC
+
+    lda     #BGXSC_VAL(BG2_MAP, 32X32)
+    sta     BG2SC
+
+    lda     #BGXSC_VAL(BG3_MAP, 32X32)
+    sta     BG3SC
+
+    lda     #BGXXNBA_VAL(BG1_TILES, BG2_TILES)
+    sta     BG12NBA
+
+    lda     #BGXXNBA_VAL(BG3_TILES, 0)
+    sta     BG34NBA
+
+    lda     #OBSEL_VAL(OBJ_TILES, 8_16)
+    sta     OBSEL
+
+
+    ; Setup Modules
+    jsr     Text_Init
+
+    ; Enable BG3
+
+    lda     #TM_BG3
+    sta     TM
+
+
+    rep     #$30
+    sep     #$20
+.a8
+.i16
+    ;lda     #$80
+    ;php
+    phk
+    plb
+    ; DB = 0x80 (access shadow RAM and ROM)
+
+
+    ; Copy hello world to inputString
+    ldx     #-1
+    -
+        inx
+        lda     !HelloWorldString, x
+        sta     inputString, x
+        bne     -
+
+
+    ; Setup InputDialog module
+
+    ldx     #inputString
+    lda     #^inputString
+    ldy     #inputStringSize
+    jsr     InputDialog_Init
+
+
+    ; Set destination string text white
+    lda     #3
+    jsr     Text_SetColor
+
+
+    ; Enable the screen, full brightness
+    lda     #15
+    jsr     EnableScreen
+    
+    jsr PrintExplanations
+    bra GameLoop
+
+.data
+
+Operations:
+#define POS(x,y) (((x) * 2) + ((y) * 32 * 2 * 2) + (2 * 2) + (1 * 32 * 2) - 32*2 + 2)
+
+	.word Do_N   , POS(  0,3), destinationString+13
+	.word Do_NA  , POS( 15,3), destinationString+14
+	.word Do_A   , POS(  0,4), destinationString+12
+	.word Do_KSI , POS( 15,4), destinationString+14
+
+	.word Do_LLA , POS(  0,5), destinationString+13
+	.word Do_SSA , POS( 15,5), destinationString+14
+	.word Do_LTA , POS(  0,6), destinationString+13
+	.word Do_STA , POS( 15,6), destinationString+14
+
+	.word Do_LLE , POS(  0,7), destinationString+13
+	.word Do_HUN , POS( 15,7), destinationString+14
+	.word Do_TTA , POS(  0,8), destinationString+12
+	.word Do_N   , POS( 15,8), destinationString+14
+#undef POS
+Operations_End:
+
+;n_operations = (Operations_End - Operations)/4
+;#define n_operations 2
+#define n_operations 12
+
+.bss
+CurrentOperation : .byt  0
+ChosenOperation  : .word 0
+CurrentFunction  : .word 0
+
+.zero
+BufferEnd        : .word 0
+
+.text
+GameLoop:
+        jsr     InputDialog_ProcessFrame
+        rep #$30
+        ldc
+        tax
+        tay
+        sep #$30
+    .a8
+    .i8
+        
+ldy #4
+---
+phy
+    	lda CurrentOperation
+    	sta ChosenOperation
+     	tax
+    	inx
+    	cpx #n_operations
+    	bcc +
+    	ldx #0
+    +	stx CurrentOperation
+    
+    	lda ChosenOperation
+    	asl
+    	adc ChosenOperation
+    	asl
+    	
+    	tax
+
+    	rep #$30
+    .a16
+    .i16
+    	lda Operations+4,x
+    	sta BufferEnd
+
+    	lda Operations+2,x ;Cursor position
+    	sta text_bufferPos
+
+    	lda Operations+0,x ;Function pointer
+    	sta CurrentFunction
+	per (+) - 1
+        ;stz     destinationString
+        ldy #inputString
+        ldx #destinationString
+        jmp (CurrentFunction)
++	tax
+	sep #$20
+    .a8
+	lda #$20
+	cpx BufferEnd
+	bcs +
+-	sta !0,x
+	inx
+	cpx BufferEnd
+	bcc -
++	lda #0
+	sta (BufferEnd)
+
+	sep #$20
+    .a8
+	ldx     #destinationString
+        lda     #^destinationString
+        jsr     PrintString
+        
+	tdc
+	tax
+	tay
+	sep #$30
+    .i8
+    .a8
+
+ply
+dey
+bne ---
+        
+notnow:
+        jsr     WaitFrame
+        bra     GameLoop
+
+.data
+HelloWorldString:
+    .byt    "Joel", 0
+.text
+
+PrintExplanations:
+    rep #$30
+.a16
+.i16
+    clc
+    lda #1024 * (2) + 0x9B
+    adc text_tilemapOffset
+    sta !text_buffer        + 0 + 32*2*3
+    adc #1
+    sta !text_buffer        + 2 + 32*2*3
+    adc #1
+    sta !text_buffer        + 4 + 32*2*3
+    adc #FONT_N_CHARS-2
+    sta !text_buffer + 32*2 + 0 + 32*2*3
+    adc #1
+    sta !text_buffer + 32*2 + 2 + 32*2*3
+    adc #1
+    sta !text_buffer + 32*2 + 4 + 32*2*3
+    
+    stz ChosenOperation
+--  ; Multiply operation by 6
+    lda ChosenOperation
+    asl
+    adc ChosenOperation
+    asl
+    tay
+    ldx Operations+2,y ;Cursor position
+    
+    ; Multiply operation by 3
+    lsr
+
+    adc text_tilemapOffset
+    adc #1024 * (2) + 0x9B + 3
+    sta !text_buffer        + 0 - 6,x
+    adc #1
+    sta !text_buffer        + 2 - 6,x
+    adc #1
+    sta !text_buffer        + 4 - 6,x
+    adc #FONT_N_CHARS-2
+    sta !text_buffer + 32*2 + 0 - 6,x
+    adc #1
+    sta !text_buffer + 32*2 + 2 - 6,x
+    adc #1
+    sta !text_buffer + 32*2 + 4 - 6,x
+    
+    lda ChosenOperation
+    tax
+    inx
+    cpx #n_operations
+    bcc +
+    ldx #0
+    stx ChosenOperation
+    rts
++   stx ChosenOperation
+    bra --
+
+
+; Example transformation
+; ======================
+
+; Create a new string with all lower case characters transformed into
+; uppercase ones.
+;
+; This routine operates upon ISO8859-1 null terminated strings
+;
+; REQUIRES: 16 bit A, 16 bit Index, DB = 0x80, DP = 0
+; INPUT: Y - source address
+; INPUT: X - destination address
+; OUTPUT: A - end of written data
+Transform_Uppercase_ISO88591:
+.a16
+.i16
+
+    sep     #$20
+.a8
+
+    -
+        lda     !0, y
+        beq     +++
+
+        cmp     #0x61
+        bcc     +
+        cmp     #0x7a + 1
+        bcs     +
+            ; A is a lower case ASCII
+            sec
+            sbc     #0x20
+        +
+
+        cmp     #0xe0
+        bcc     +
+            ; Skip characters with no upper case equivalent
+            cmp     #0xf7
+            beq     +
+            cmp     #0xff
+            beq     +
+
+            ; A is a lower case latin char
+            sec
+            sbc     #0x20
+        +
+
+        sta     !0x, x
+
+        inx
+        iny
+
+        bra     -
+    +++
+
+    ; write zero-terminator
+    stz     !0, x
+
+
+    rep     #$20
+.a16
+    txa
+
+    rts
+
+#if 0
+; Example programs
+; ================
+
+; AAAAAA test
+; Tests PrintChar (including text margins)
+; Prints the letter A once per frame
+Test_PrintAAAAA:
+    sep     #$20
+.a8
+
+    lda     #1
+    jsr     Text_SetColor
+
+    -
+        jsr     WaitFrame
+
+        lda     #0x41
+        jsr     PrintChar
+
+        bra     -
+
+
+
+; Numbers test
+; Tests PrintPadded_UY and PrintHexString
+Test_Numbers:
+    rep     #$30
+    sep     #$20
+.a8
+.i16
+
+    lda     #4
+    jsr     Text_SetColor
+
+    -
+        jsr     WaitFrame
+
+        ldx     #23
+        ldy     #0
+        jsr     Text_SetCursor
+
+        ldy     frameCounter
+        lda     #5
+        jsr     PrintPadded_UY
+
+        jsr     PrintNewLine
+        jsr     PrintNewLine
+
+
+        ldx     #FontPalette
+        lda     #^FontPalette
+        ldy     #8 * 4 *2
+        jsr     PrintHexString
+
+        bra     -
+#endif
+
+; vim: ft=asm:
+
