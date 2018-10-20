@@ -1,0 +1,476 @@
+Hello!
+
+Remember my making-a-compiler series?
+
+If you have not seen the
+previous episodes yet,
+
+suggest you do watch them now.
+
+Otherwise you will be very confused
+when watching this video.
+
+So, let’s begin
+with the fundamentals.
+
+This compiler targets
+multiple platforms.
+
+Each target architecture
+has a name, word size,
+
+list of registers,
+and so on,
+
+as discussed earlier.
+
+Then comes the list of
+assembler instructions,
+
+or rather,
+patterns of assembler code.
+
+Each pattern accomplishes
+some particular IR statement –
+
+in the compiler.
+
+It begins with a snippet
+of assembler code.
+
+This particular snippet can
+solve the IR statement –
+
+only if the statement parameters
+match some particular criteria.
+
+In my design,
+the criteria can be –
+
+one of the following
+four options:
+
+One of select CPU registers,
+or a memory variable,
+
+or a number literal,
+
+or the same as some previous
+operand in the same statement.
+
+The snippet may also
+have side-effects:
+
+It may clobber some
+other CPU registers –
+
+with undefined values.
+
+In case multiple instructions
+fulfill the same outcome,
+
+a cost is used to
+weigh different options.
+
+Let us explore in practice
+how this works.
+
+Start with the x86 platform,
+
+since that is more
+familiar to most people.
+
+The MOV instruction,
+for instance,
+
+implements the COPY statement
+pretty conclusively.
+
+For zero-initializing a register,
+
+the XOR instruction
+is a bit more efficient.
+
+And to copy label references
+into registers,
+
+we must use the LEA instruction,
+
+because that way we can use
+the RIP-relative addressing mode –
+
+that is recommended on the x86_64.
+
+For negation,
+the x86 offers a NEG operand,
+
+but it only works if the source
+and the target are the same.
+
+If the operands are different,
+
+we can use multiply-by-minus-one,
+
+but then, the target
+must be a register.
+
+Similar thing happens
+with the ADD operation.
+
+The target must be same
+as one of the sources.
+
+There is, however,
+
+a three-operand ADD operation,
+although it’s sort of underhanded.
+
+We can abuse the address decoder –
+
+to perform the sum of two registers
+and store the result in a third.
+
+But this works only
+if no operand is a memory variable.
+
+The INC and DEC instructions
+can be used as quicker alternatives –
+
+when operating with
++1 and −1 literals.
+
+For the READ statement,
+there’s not many alternatives.
+
+The MOVZX instruction will be used
+to read a byte from the memory –
+
+and zero-extend it
+into a 32-bit register.
+
+The store into the 32-bit register
+will incidentally –
+
+also clear the upper
+part of the register,
+
+so we can use EAX as the target
+to effect the whole RAX.
+
+Similar shenanigans go
+with the WRITE statement.
+
+For the equality test –
+
+we can use the combination
+of CMP and SETE.
+
+Because the SETE instruction –
+
+only sets the lowest 8 bits
+of the target register,
+
+the target register
+must be cleared first.
+
+Slightly different code is required,
+
+if the target register
+matches one of the sources.
+
+NOP is of course just NOP.
+
+The IFNZ is a combination
+of a comparison and a branch.
+
+So far so good.
+
+Now let’s see what to do
+with the SNES platform.
+
+The TAX, TYA and so on instructions
+can be used to move data –
+
+between any of the three registers.
+
+The LDA, LDX and LDY instructions –
+
+can be used to initialize any register
+with a constant value.
+
+However, only the A register
+can load data directly from the stack.
+
+It is possible, sort of,
+to load stack data into the Y register,
+
+but doing so will clobber
+the X register in the process.
+
+The same goes with the STA instruction,
+
+which writes data
+from the A register into memory.
+
+Remember, every time
+the code says “Mem”,
+
+it really means the stack.
+
+We could use globals instead
+of stack-relative variables,
+
+but then we could not compile recursion.
+
+The priority numbers
+on each of these lines,
+
+in case you are wondering,
+are arbitrary.
+
+They convey my idea –
+
+of how favorable this instruction
+is compared to other instructions,
+
+and the compiler will use
+this information later.
+
+There is no NEG instruction
+on the SNES,
+
+so what we must do instead
+is subtract from zero.
+
+If the value is already
+in the A register,
+
+bitwise operations can be used
+to produce the arithmetic negation,
+
+but it’s a bit inconvenient.
+
+Arithmetic on the SNES can
+only be performed on the A register.
+
+However, quick increments of +1 or −1
+can be done on any register –
+
+with a single instruction.
+
+The INC operation can also
+use a memory operand,
+
+except if it’s a stack variable.
+
+However, stack addressing can be
+turned into indexed addressing –
+
+by copying the stack pointer
+into the X register.
+
+This clobbers X, of course.
+
+Testing whether a variable
+is nonzero –
+
+is a matter of testing
+whether it is greater or equal than one.
+
+This produces the result
+in the carry-flag.
+
+I utilize the carry-flag here,
+
+because it is possible the compiler
+had to perform some logistic operations –
+
+in order to bring the source value
+into one of these registers,
+
+and the logistics must be
+undone before the branch.
+
+Nearly all of the logistic
+operations, such as LDA,
+
+touch the zero-flag,
+
+but none of them touch
+the carry flag.
+
+As an option,
+
+I also provide the possibility
+to test a memory variable directly,
+
+but in this case there can be
+no cleanup before the branch.
+
+The asterisk shall mark
+this limitation.
+
+If we need the equality
+test result in a register…
+
+[chuckles]
+Boy that’s going to be tricky.
+
+I will leave interpreting these
+snippets as an exercise to the reader.
+
+Now to make sure the list of instruction
+patterns is minimally redundant,
+
+a small change must be done
+into the IR code.
+
+Namely, instructions
+that are non-associative,
+
+that is, their operands
+can be given in any order,
+
+are always specified
+in a predictable order.
+
+I add a “non-associative” flag
+into the statements.
+
+It simply says whether the
+read-parameters are associative or not.
+
+This information will be utilized
+in a final optimization step:
+
+Canonization.
+
+In this step, each statement
+will be checked:
+
+If the statement is non-associative,
+its read parameters are sorted.
+
+Now is also a good time to convert
+all INIT statements into COPY statements.
+
+Dedicated INIT statements are not
+really needed anymore,
+
+considering that literals were
+already made into special parameters
+
+in episode 4B.
+
+The newly minted Canonize method –
+
+will be added to the list
+of optimization methods to run.
+	
+Did I say I was going to
+make the IR code simpler?
+
+What I meant to say was –
+
+I am going to add a few
+new statement types.
+
+An IFEQ statement,
+
+which combines the
+effects of EQ and IFNZ,
+
+and three new pseudo-statements,
+
+which will be used only
+in the code generator.
+
+I will spare you the gruesome
+details of implementing those.
+
+Instead, let’s fast-forward…
+
+back to the instruction listings.
+
+This is the x86 section.
+
+And this is how we shall
+do the IFEQ statement.
+
+The three extra statements
+I added were SWAP, PUSH and POP.
+
+Swapping the contents of two variables
+can be convenient sometimes.
+
+So is the possibility to PUSH & POP
+directly from/to the stack,
+
+without using temporary variables.
+
+On the x86, any register or stack variable
+can be pushed to the stack –
+
+with a single instruction.
+
+Even number literals can be
+pushed to the stack.
+
+The pop instruction
+is just as arbitrary.
+
+On the SNES however,
+things are not quite as awesome.
+
+There are no SWAP
+instructions at all.
+
+Well, there are XBA and XCE,
+but they do different things.
+
+But any of the three base registers
+can be pushed and popped.
+
+Number literals can be pushed too,
+if anyone cares.
+
+The IFEQ instruction
+follows the same logic –
+
+as the IFNZ instruction, mostly. 
+
+Some of these clobber the A register.
+
+And some of them can
+only be performed –
+
+as the last instruction
+of the statement,
+
+because they rely on the Z flag
+rather than on the carry flag.
+
+There are also the FCALL and RET statements,
+
+that we will look into later.
+
+In the next episode,
+
+we will write the part –
+
+that chooses the proper instructions
+from these tables,
+
+to generate the actual program.
+
+Because YouTube does not reliably
+bring the videos from your favorite channels –
+
+to the Recommendations listing
+on the front page,
+
+make sure to subscribe and click the
+bell icon to not miss new videos!
+
+See you again, and have
+a very pleasant day.

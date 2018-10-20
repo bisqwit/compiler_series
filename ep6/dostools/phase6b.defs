@@ -1,0 +1,125 @@
+<?php
+
+define('IN_FILE', 'phase6b.cc.lst');
+define('SAVE_FILE', 'conj.y');
+define('SHOW_PLAN',   true);
+define('FINAL_OUTPUT', false);
+
+define('PLAN_SHOW_OUTSIDES', 3); // Max 3 lines outside visible area
+
+define('MAX_LEVEL', 99990);
+define('DEFAULT_SPEED', 'ÿÿ'); // Default speed: 20/16
+define('COMMENT_SPEED', 'ÿÿ'); // 2/16
+
+define('ATFIRST', DELAY1s."ÿÿ\re conj.y\ru");
+define('ATLAST', "ÿÿdconjfin5.y\rÿÿdconj.y\r".DELAY100s."ÿÿx\r\rexit\r\r");
+
+define('FORCE_SPEED', false);
+#define('FORCE_SPEED', 4);
+
+define('FIRST_PLAN', 10);
+
+$screens = Array
+(
+  #        textdims  font  double c64
+  1    => ["-".RT."\r".SF1."128 50\r",     128,50, 8,8,  0,0],
+  10   => [SF1."128 20\r",                  128,20, 8,16, 0,0, 'reset'=>true],
+  30   => ["-".RT."\r-\r",                 128,40, 8,12, 0,0],
+  100  => ["".DN.DN.DN.DN.DN.DN.DN.DN.DN.RT."\r".
+           SF1."128 20\r",                  128,20, 8,16, 0,0],
+ #200  => [SF1."128 20\r",                  128,20, 8,16, 0,0], // FIXME inputs
+  300  => ["-".RT."\r".SF1."128 60\r",     128,60, 8,8,  0,0],
+  430  => [SF1."142 60\r",                  142,60, 8,8,  0,0],
+);
+
+$line_anchor = Array
+(
+  # Line number to make the first visible line on screen,
+  # relative to the first line that gets edited
+  1 => 0,
+  10 => 5, 20 => 2, 25 => 3,
+  #40 => 14, 50 => 10,
+  #75 => 10,
+  40 => 23,
+  80 => 3,
+  100 => 0, // platforms[], and snes platform
+  200 => 0, // x86_64 platform
+  300 => 31, // Macros for platform_defs
+  325 => 15, // Macros cont'd, x86_64 defs
+  410 => 37, 	
+  450 => 34, // Focus on x86_64
+  500 => 13, // Add SNES insns
+  600 => 22, // Still SNES
+  700 => 1,
+  710 => 30,
+  720 => 14,
+  780 => 9,
+  800 => 18,
+  811 => 19, 814 => 15, 815 => 30, 818 => 13, 819 => 45, 821 => 15, 823 => 53,
+  900 => 21, // Add IFEQ&SWAP for x86_64
+  940 => 37, // Add IFEQ&SWAP for SNES
+  1000 => 30,
+  1050 => 28,
+  1135 => 26, 1160 => 30,
+  2000 => 31,
+  2030 => 26,
+  2060 => 39,
+  2110 => 45,
+  2120 => 18,
+  2200 => 11,
+  2300 => 30,
+  2400 => 16,
+  2530 => 4,
+  2600 => 30,
+  2640 => 9,
+  2700 => 36,
+  2730 => 17,
+);
+
+$selections = Array
+(
+  2211 => Array(0 => 'statement::reg_type'),
+);
+
+$turbo_ranges = Array
+(
+  1 => 1,
+  82=>2,83=>2,84=>4,85=>2,86=>2, // union
+  // ifeq
+  810=>2,811=>2,812=>2,813=>2,814=>2,815=>2,816=>2,817=>2,818=>2,819=>2,820=>2,821=>2,822=>2,823=>2,
+  // CodeGen()
+  1110=>1,1111=>1,1113=>1,1115=>1,1120=>1,1121=>1,1125=>1,1130=>1,1133=>1,1135=>1,1140=>1,1142=>1,1145=>1,1150=>1,1152=>1,1160=>1,1162=>1,1170=>1,
+  // debug_codegen
+  2645=>3,2646=>2,2647=>1,
+);
+
+// Delay performed before this number
+$bigdelay = Array(
+  10,
+  30,
+  40,50,
+  100,200,300,
+  400,410,415,
+  430,435,440,
+  450,460,470,
+  500,
+  510,
+  560,570,580,
+  600,610,
+  630,
+  700,701, 760, 780,
+  800,
+  810,
+  901,
+  940,945,
+  981,
+  1000,
+  2200,
+  2235,
+  2300, 2400,
+  2600,
+  2620,
+  2630,
+  2640,
+  2700,
+);

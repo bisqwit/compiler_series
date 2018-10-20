@@ -915,6 +915,7 @@ done
 :line_comment_escape Comment
 	*		line_comment
 :comment_maybe_doxygencmd Comment
+	*		comment noeat
 	"a-z"		comment_doxygencmd recolor=-2 buffer
 	" "		comment_space
 	"\t"		comment_tab recolor=-1

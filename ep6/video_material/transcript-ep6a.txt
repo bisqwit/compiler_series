@@ -1,0 +1,705 @@
+It’s time for our little compiler
+to get in touch with the real world!
+
+And by real world,
+
+I mean a PC,
+such as this one.
+
+How does it work?
+
+The answer, like the answers
+to all good questions,
+
+lies in the AMD64 Architecture
+Programmer’s Manual.
+
+Page 24 in this manual
+shows the register architecture –
+
+of this processor architecture.
+
+There are sixteen base registers
+and some special-purpose registers.
+
+The next opening, pages 26 and 27,
+explain this more in detail.
+
+You can find even more-in-detail
+information about this architecture –
+
+in a separate video
+that I made some time in the future,
+
+but let me quote parts from it:
+
+There are sixteen
+base registers.
+
+These are like really really fast
+variables within the CPU itself.
+
+They are named RAX, RBX, RCX,
+and so on, until R15.
+
+Each register is 64 bits wide,
+
+but the bottom 32 bits
+can be addressed separately –
+
+with a legacy name:
+EAX, EBX, ECX, and so on.
+
+Furthermore, the bottom 16 bits
+can be addressed separately,
+
+and so can the bottom 8 bits as well.
+
+Some of the registers also have a way to
+address the second set of 8 bits,
+
+because of legacy reasons.
+
+And in my compiler,
+we might use all of these.
+
+Well, except for the stack pointer
+because it has a special purpose.
+
+The IR variables will be directly
+converted into CPU registers,
+
+such that R0 is RDI, R1 is RSI,
+R2 is RDX, and so on,
+
+until R14 which is RBP.
+
+But what do we do when
+we run out of registers?
+
+We might add more registers.
+
+These 64-bit registers exist
+in all x86_64 processors,
+
+but they are usually used
+for special types of calculation,
+
+not as general-purpose
+storage for variables.
+
+Nevertheless, it is possible
+to use them like this.
+
+But we still have a cap.
+
+Only the first 55 variables have
+been assigned physical storage.
+
+It might not be enough for some programs,
+
+and furthermore, on the SNES,
+we still only have three registers.
+
+The rest of variables have to
+be stored somewhere else.
+
+And that somewhere
+else is memory.
+
+There are two classes
+of variables:
+
+Ones that are stored
+in CPU registers,
+
+and ones that are
+stored in memory.
+
+Not all CPU registers
+are equal though.
+
+Some registers and instructions
+have limitations –
+
+on what they may be paired with.
+
+And the rest of variables
+are stored in memory.
+
+The traditional way to programming
+on old video game consoles –
+
+is to store all variables
+in global memory.
+
+However, global variables
+are disfavored –
+
+by both modern compilers and
+modern programming guidelines.
+
+The robust way is to
+put the variables in stack.
+
+IR statement parameters
+can also be number literals.
+
+So let’s study the
+IR statements themselves.
+
+Here are some
+sample IR statements.
+
+How do we map these
+into CPU instructions?
+
+A crude sketch would
+look like this.
+
+Each statement corresponds to one
+or more CPU instructions.
+
+This is how simple compilers
+do the translation –
+
+from IR code into machine code.
+
+However, this little sketch
+is just that, a starting point.
+
+Let’s study this MOV
+instruction for instance.
+
+How does the MOV instruction
+actually work?
+
+These are all the valid
+combinations of operands.
+
+You can move from a base register
+to another base register.
+
+You can move from memory
+to a base register,
+
+and vice versa.
+
+You can not move directly
+from memory to memory.
+
+For number literals,
+
+you can use the XOR instruction
+to put zero into a base register.
+
+You can also put an arbitrary
+number literal into a base register,
+
+as long as that number literal
+is smaller than 32 bits.
+
+The LEA instruction can put the address
+of a resource into a register,
+
+even if that address
+is larger than 32 bits.
+
+And you can directly assign
+a number literal into a memory variable,
+
+as long as that number literal
+is smaller than 32 bits.
+
+If we add the SIMD registers
+into the mix,
+
+the number of data movement instructions
+becomes five times larger.
+
+So it is clear that a simple
+MOV will not do it.
+
+For the addition, we can abuse
+the address decoder –
+
+to perform the sum of two registers
+and store the result in a third.
+
+But this only works if none of
+the operands is a memory variable.
+
+Now let’s have a look
+at the SNES instructions.
+
+The LDA instruction comes
+in two varieties:
+
+One reads a memory variable
+and stores into A,
+
+and the other stores
+a number literal in A.
+
+Both of these operate on A.
+
+For other combinations of
+registers and memory,
+
+there is at least
+13 different instructions.
+
+All the other statements have
+similar restrictions,
+
+and we have to figure out
+ways to deal with them.
+
+The READ instruction is
+rather straightforward.
+
+This variant shown here –
+
+assumes the source
+is a memory variable,
+
+that contains the address of the
+other memory resource we should read.
+
+For that, we use the stack-indexed-
+indirect LDA instruction.
+
+It works as intended,
+but as a casualty,
+
+it also clobbers the
+contents of the Y register.
+
+Some instruction patterns may
+indeed have side-effects,
+
+that they clobber some registers
+and put in them an unrelated value.
+
+The compiler must be aware of this.
+
+Now that we have established
+what we can do,
+
+let’s move on to
+what we should do.
+
+For the x86_64 platform,
+also called AMD64,
+
+there is an actual official document –
+
+that specifies how everything
+should be done.
+
+It specifies things
+like data formats,
+
+function call convention,
+stack layout,
+
+program models, and
+even the file formats.
+
+Basically, everything there is to
+producing well-behaved programs.
+
+I am going to focus on
+the function call convention.
+
+This is an umbrella term –
+
+that covers how to pass
+parameters to functions,
+
+where return values are stored,
+
+and where and how to
+store local variables.
+
+All of these are somewhere in
+CPU registers or in the stack,
+
+but how and where exactly,
+
+that’s what we are
+going to find out.
+
+Answers are found in chapter 3.2.3,
+on pages 21 and 22.
+
+In my compiler,
+
+all variables are words that are
+either integers or pointers.
+
+So, the first six parameters
+are passed in registers –
+
+RDI, RSI, RDX, RCX, R8 and R9
+respectively.
+
+If the function takes
+more parameters than six,
+
+the rest of the parameters
+are passed through stack,
+
+in reversed order.
+Very good!
+
+The return value is
+passed in the RAX register.
+
+On page 23 there is a summary –
+
+that lists the role of
+every register in the CPU.
+
+Worth noticing here is the column that
+says “preserved across function calls”.
+
+This means whether the register type is
+“caller-saves” or “callee-saves”.
+
+If the register is “caller-saves”,
+such as RAX,
+
+it means that whenever the
+function calls another function,
+
+if it still needs the
+value of that register –
+
+after the function call,
+
+it must save it somewhere
+and reload it after the call.
+
+However, it does not need
+to save this register –
+
+at the start and
+restore it at the exit.
+
+If the register is “callee-saves”,
+such as RBX,
+
+it means that if the function uses
+this register as a temporary variable,
+
+it must save the register –
+
+when entering the function
+and restore it before exiting,
+
+but when it calls
+other functions,
+
+it does not need to worry –
+
+about the function
+clobbering that register,
+
+because the ABI specifies –
+
+that the other function
+must not clobber the register.
+
+Okay that’s everything there is
+to know about the registers,
+
+but how about the stack?
+
+Pages 17 and 18 explain
+key facts about the stack.
+
+The order of function parameters,
+the order of local variables,
+
+the alignment, and also the
+concept called red zone.
+
+This was a lot to take in,
+
+so let’s do a summary of everything
+that has been learned so far.
+
+All registers and parameters
+are 64 bits wide.
+
+The first six function parameters –
+
+shall be passed in six
+particular CPU registers.
+
+The function shall return
+the value in RAX register.
+
+Six out of the fifteen general-purpose
+registers are callee-saves;
+
+all the other registers are caller-saves.
+
+The stack must be aligned
+on sixteen-byte boundary.
+
+And a leaf function may utilize
+a 128-byte red zone in the stack;
+
+this is an area of the stack –
+
+that is technically not
+yet allocated for the function,
+
+but the ABI specifies
+it can be used anyway.
+
+For the SNES
+there is no official ABI,
+
+but we can make one up.
+
+All registers and pointers
+are 16 bits wide.
+
+Register parameters shall be
+passed in X, Y and A.
+
+I chose this order for the
+simple reason that in my code,
+
+most parameters are pointers,
+
+and increments by one are much
+simpler on X and Y than on A.
+
+The function return value will
+be in the A register.
+
+There is a fundamental difference
+between the x86 and the 65816 –
+
+in how the stack pointer works.
+
+On the x86, the stack pointer
+always points to the address –
+
+that the next POP would read.
+
+On the 65816 however,
+
+the stack pointer points to
+where the next push would write.
+
+The red-zone is an area that is
+ahead of the stack pointer,
+
+where next pushes would write.
+
+On the SNES there
+is no red-zone.
+
+One tangible reason is –
+
+that the stack-relative addressing
+mode cannot take negative offsets.
+
+Let’s have a case study.
+
+This is an example function –
+
+that takes a plethora of
+function parameters.
+
+At least three parameters had
+to be passed through stack.
+
+In red letters you can see –
+
+how to refer to each of these
+stack items individually.
+
+Now suppose the function also
+has two local memory variables.
+
+These local variables now occupy
+the topmost addresses in the stack,
+
+and the incoming parameters are
+farther out in the stack.
+
+On the x86 you could actually use
+the red-zone for those locals,
+
+without having to explicitly
+allocate space for them,
+
+but on the SNES this
+is not possible.
+
+So let’s ignore red-zone for now.
+
+Now suppose this function
+calls another function –
+
+that also takes a
+plethora of arguments.
+
+Some of these arguments would
+have to be stored in the stack.
+
+Notice how the stack allocation
+grows bigger and bigger –
+
+to reflect these new items
+in the stack.
+
+Hmm. But if our function needed
+temporary variables in the stack,
+
+it probably already used at least
+some of those callee-save registers.
+
+In this case, RBX and RBP.
+
+So those two have to be
+saved in the entrance,
+
+and restored at the exit.
+
+Again, the incoming function parameters
+are further out in the stack.
+
+But wait, we are calling
+a child function, right?
+
+Let’s do a count.
+
+We have added seven items
+into the stack –
+
+since the function started.
+This is an odd number.
+
+The ABI specified –
+
+that the stack must be
+aligned on 16-byte boundary,
+
+which means an even number
+of eight-byte words.
+
+We must add padding into the stack
+in order to not violate the ABI.
+
+Now, we have done everything
+according to the ABI.
+
+Notice how we allocated
+space from the stack.
+
+It is a simple matter
+of mathematics:
+
+Subtract the desired number
+from the stack pointer.
+
+To release the space,
+
+add that same number
+back to the stack pointer.
+
+How about on the SNES?
+
+The PHX instruction is
+used for allocating space.
+
+To allocate two words,
+issue PHX twice.
+
+More space, more PHX.
+
+To release the space,
+do just as many PLX instructions.
+
+You can see where this is going.
+It goes in the direction of awkward.
+
+In the SNES there is no way to do
+arithmetic on the stack pointer.
+
+All arithmetics has to be
+performed on the A register.
+
+If you wish to subtract 30 words
+from the S register,
+
+it has to be first transferred
+into the X register,
+
+and from there
+into the A register,
+
+and then calculation
+is performed,
+
+and then it’s transferred
+back into X, and then back into S.
+
+There is no simpler way.
+
+Fine and dandy, but
+it clobbers A and X.
+
+This is very bad,
+
+if the function receives parameters
+in those registers.
+
+We cannot read the parameters,
+if we overwrite the registers –
+
+before we even get
+to the actual function body.
+
+There is a way to save
+those registers though. 
+
+This alternative saves the X register,
+although it still clobbers A.
+
+And even longer code
+saves both A and X.
+
+This is the perfect function
+prologue on the SNES.
+
+Awkward…!
+
+In the function exit, very much
+similar code has to be done.
+
+This code avoids clobbering
+the A register,
+
+because it contains
+the function return value.
+
+It still clobbers X though.
+
+It’s possible to preserve A and X
+in the exit boilerplate as well,
+
+meaning this is the absolutely
+perfect function exit code,
+
+but we don’t need that.
+
+Tune in for more — next time
+in Making a Compiler!

@@ -1,0 +1,855 @@
+QUICK TOPICS
+
+	"$STR" -> "STRINGTABLE"
+		Compile()
+		-- done offscreen
+
+	The write target may be "nowhere"
+		Trace()
+		also CopyElision()
+		-- done offscreen
+	
+	#line
+		yylex()
+		-- done offscreen
+	
+	ForAllBitsIn, BitMaskFrom
+		-- done offscreen
+	
+	IFEQ statements
+		ENUM_STATEMENTS
+		Patches
+		Optimization "IFEQ threaded"
+		Canonization
+
+	SWAP, PUSH, POP statements
+
+	Canonization
+		If the statement is commucative, sort its read operands
+			Optimize_Canonize()
+		Commutative flag; ENUM_STATEMENTS use multiplicative formula
+			#define
+			bool Commutative()
+			Canonization
+	
+	Commandline options
+		#define
+		namespace
+		if-patches
+		ParseCommandLineOptions()
+		rewrites to main()
+
+CONCEPTS
+
+	Correspondance of IR variables <-> hardware memory (registers, stack vars)
+			IR register to CPU register mapping
+		https://support.amd.com/TechDocs/24592.pdf (AMD64 architecture manual, volume 1)
+			Page 24, general-purpose registers
+			Page 27, detail on the registers
+			Pages 24-28 might be browsed
+		Slides 2-7 from **x86registers.odp**:
+			X86 registers
+		Slides from ep6.odp:
+			Slide 1: 15 registers
+			What do we do when we run out of registers?
+			Slide 2: We might add more registers
+			But that is still not enough, and on the SNES, we still only have 3 registers.
+			The rest of them have to be memory variables
+		Data classes
+			Slides 3–7 from ep6.odp
+			
+	Correspondance of IR statements <-> asm instructions
+		Slides 8–25
+	
+	Application Binary Interface (ABI)
+		Function call convention
+			Slides 26—29
+			Case study: x86_64 ABI
+				Slides 30—33
+			Summary: Slides 34—36
+		Stack layout
+			Example: Slides 37—43
+			But it calls child functions, so it needs alignment
+				Slides 44—47
+			Details: Slides 48—68
+				Slide 69: Bling bling perfect case (halleluja SFX +bell across screen)
+						Gillican cut - we don't need this
+
+SCRIPT
+
+It’s time for our little compiler to get in touch with the real world!
+	[TODO: photo of a PC]
+And by real world, I mean a PC, such as this one.
+How does it work?
+
+The answer, like the answers to all good questions,
+	[amd64-page_front.png]
+lies in the AMD64 Architecture Programmer’s Manual.
+	[amd64-page24_25.png]
+Page 24 in this manual shows the register architecture
+of this processor architecture.
+There are sixteen base registers
+and some special-purpose registers.
+The next opening, pages 26 and 27 explain this more in detail.
+
+You can find even more-in-detail information
+about this architecture in a separate video
+that I made some time in the future,
+but let me quote parts from it:
+
+	[x86registers.odp, page 2]
+There are sixteen base registers.
+These are like really really fast variables within the CPU itself.
+	[page 3]
+They are named RAX, RBX, RCX, and so on, until R15.
+Each register is 64 bits wide,
+	[page 4]
+but the bottom 32 bits can be addressed separately
+with a legacy name: EAX, EBX, ECX, and so on.
+	[page 5]
+Furthermore, the bottom 16 bits can be addressed separately,
+	[page 6]
+and so can the bottom 8 bits as well.
+	[page 7]
+Some of the registers also have a way to address
+the second set of 8 bits, because of legacy reasons.
+
+	[ep6.odp, page 1]
+And in my compiler, we might use all of these.
+Well, except for the stack pointer because it has a special purpose.
+
+The IR variables will be directly converted into CPU registers,
+such that R0 is RDI, R1 is RSI, R2 is RDX, and so on, until R14 which is RBP.
+
+But what do we do when we run out of registers?
+	[slide 2, fade from top-left to bottom-right]
+We might add more registers.
+These 64-bit registers exist in all x86_64 processors,
+but they are usually used for special types of calculation,
+not as general-purpose storage for variables.
+Nevertheless, it is POSSIBLE to use them like this.
+But we still have a cap.
+Only the first 55 variables have been assigned physical storage.
+It might not be enough for some programs, and furthermore,
+on the SNES, we still only have three registers.
+
+The rest of variables have to be stored somewhere else.
+	[slide 3]
+And that somewhere else is memory.
+There are two classes of variables:
+Ones that are stored in CPU registers,
+and ones that are stored in memory.
+	[slide 4]
+Not all CPU registers are equal though.
+	[slide 76]
+Some registers and instructions have limitations
+on what they may be paired with.
+	[slide 5]
+And the rest of variables are stored in memory.
+The traditional way to programming on old video game consoles
+is to store all variables in global memory.
+	[slide 77]
+However, global variables are disfavored by both modern
+compilers and modern programming guidelines.
+	[slide 6]
+The robust way is to put the variables in stack.
+	[slide 7]
+
+Parameters in our IR statements can also be
+number literals instead of variables.
+
+	[slide 8]
+So let’s study the IR statements themselves.
+	[slide 9 & 10, scroll from bottom]
+Here are some sample IR statements.
+How do we map these into CPU instructions?
+
+	[slide 11]
+A crude sketch would look like this.
+Each statement corresponds to one or more CPU instructions.
+This is how simple compilers do the translation from IR code into machine code.
+
+However, this little sketch is just that, a starting point.
+	[slides 12, 13]
+Let’s study this MOV instruction for instance.
+How does the MOV instruction actually work?
+	[slide 14]
+These are all the valid combinations of operands.
+You can move from a base register to another base register.
+You can move from memory to a base register, and vice versa.
+You can not move directly from memory to memory.
+For number literals,
+you can use the XOR instruction to put zero into a base register.
+You can also put an arbitrary number literal into a base register,
+as long as that number literal is smaller than 32 bits.
+The LEA instruction can put the address of a resource into
+a register, even if that address is larger than 32 bits.
+And you can directly assign
+a number literal into a memory variable,
+as long as that number literal is smaller than 32 bits.
+	[slide 15]
+If we add the SIMD registers into the mix,
+the number of data movement instructions
+becomes five times larger.
+	[slide 16]
+So it is clear that a simple MOV instruction will not do it.
+	[slide 17]
+For the addition, we can abuse the address decoder
+to perform the sum of two registers and store the result in a third.
+	[slide 18]
+But this only works if none of the operands is a memory variable.
+	[slide 19]
+Now let’s have a look at the SNES instructions.
+	[slide 20]
+The LDA instruction comes in two varieties:
+One reads a memory variable and stores into A,
+and the other stores a number literal in A.
+Both of these operate on A.
+	[slide 21]
+For other combinations of registers and memory,
+there is at least 13 different instructions.
+	[slide 22]
+All the other statements have similar restrictions going on,
+and we have to figure out ways to deal with them.
+	[slide 23]
+The READ instruction is rather straightforward.
+This variant shown here assumes the source is a memory variable,
+that contains the address of the other memory resource we should read.
+For that, we use the stack-indexed-indirect LDA instruction.
+	[slide 24]
+It works as intended, but as a casualty,
+it also clobbers the contents of the Y register.
+	[slide 25]
+Some instruction patterns may indeed have side-effects,
+that they clobber some registers and put in them
+an unrelated value.
+The compiler must be aware of this.
+	[slide 26]
+Now that we have established what we can do,
+let’s move on to what we SHOULD do.
+	[abi-scroll.mkv]
+For the x86_64 platform, also called AMD64,
+there is an actual official document that specifies
+how everything should be done.
+	[slide 27]
+It specifies things like data formats,
+function call convention, stack layout,
+program models, and even the file formats.
+
+Basically, everything there is to producing
+well-behaved programs.
+
+	[slide 28]
+I am going to focus on the function call convention.
+	[slide 29]
+This is an umbrella term that covers how
+to pass parameters to functions,
+where return values are stored,
+and where and how to store local variables.
+All of these are somewhere in CPU registers
+or in the stack, but how and where exactly,
+that’s what we are going to find out.
+
+	[slide 30]
+Answers are found in chapter 3.2.3, on pages 21 and 22.
+In my compiler, all variables are words
+that are either integers or pointers.
+So, the first six parameters are passed
+in registers RDI, RSI, RDX, RCX, R8 and R9
+respectively.
+If the function takes more parameters than six,
+the rest of the parameters are passed through stack,
+in reversed order.
+Very good!
+
+	[slide 31]
+The return value is passed in the RAX register.
+
+	[slide 32]
+On page 23 there is a summary
+that lists the role of every register
+in the CPU.
+
+Worth noticing here is the column that
+says “preserved across function calls”.
+
+This means whether the register type is
+“caller-saves” or “callee-saves”.
+
+If the register is “caller-saves”, such as RAX,
+it means that whenever the function calls another function,
+if it still needs the value of that register
+after the function call,
+it must save it somewhere and reload it after the call.
+However, it does not need to save this register
+at the start and restore it at the end.
+
+If the register is “callee-saves”, such as RBX,
+it means that if the function uses this register as a temporary variable,
+it must save the register when entering the function
+and restore it before exiting,
+but when it calls other functions,
+it does not need to worry about the function clobbering that register,
+because the ABI specifies that the other function
+must not clobber the register.
+
+Okay that’s everything there is to know about the registers,
+but how about the stack?
+
+	[slide 33]
+Pages 17 and 18 explain key facts about the stack.
+The order of function parameters, the order of local variables,
+the alignment, and also the concept called red zone.
+
+This was a lot to take in,
+so let’s do a summary of everything that has been learned so far.
+
+	[slide 34, fade in slide 35 while speaking]
+
+All registers and parameters are 64 bits wide.
+The first six function parameters shall be passed
+in six particular CPU registers.
+The function shall return the value in RAX register.
+Six out of the fifteen general-purpose registers are callee-saves;
+all the other registers are caller-saves.
+The stack must be aligned on sixteen-byte boundary.
+And a leaf function may utilize a 128-byte red zone in the stack;
+this is an area of the stack that is technically not yet allocated
+for the function, but the ABI specifies it can be used anyway.
+
+	[slide 36]
+For the SNES there is no official ABI, but we can make one up.
+All registers and pointers are 16 bits wide.
+Register parameters shall be passed in X, Y and A.
+
+I chose this order for the simple reason that in my code,
+most parameters are pointers, and increments by one are
+much simpler to do on X and Y registers than on the A register.
+
+The function return value will be in the A register.
+
+	[slide 37]
+There is a fundamental difference between the x86 and the 65-8-16
+in how the stack pointer works.
+
+On the x86, the stack pointer always points
+to the address where the next POP would read.
+
+On the 65-8-16 however, the stack pointer
+points to where the next push would write.
+
+	[slide 38]
+The red-zone is an area that is ahead of the stack pointer,
+where next pushes would write.
+On the SNES there is no red-zone.
+One tangible reason is that the stack-relative
+addressing mode cannot take negative offsets.
+
+[memo: Rested here to charge voice]
+
+	[slide 39]
+Let’s have a case study.
+This is an example function
+that takes a plethora of function parameters.
+So many parameters,
+that at least three had to be saved in stack.
+
+In red letters you can see how to refer to each
+of these stack items individually.
+	[slide 40]
+Now suppose the function also has two local memory variables.
+These local variables now occupy the topmost addresses in the stack,
+and the function parameters are farther out in the stack.
+	[slide 41]
+On the x86 you could actually use the red-zone for those locals,
+without having to explicitly allocate space for them,
+but on the SNES this is not possible.
+	[back to slide 40]
+So let’s ignore red-zone for now.
+	[slide 42]
+Now suppose this function calls another function that also
+takes a plethora of arguments.
+Some of these arguments would have to be stored in the stack.
+Notice how the stack allocation grows bigger and bigger
+to reflect these new items in the stack.
+	[slide 43]
+Hmm. But if our function needed temporary variables in the stack,
+it probably already used at least some of those callee-save
+registers. In this case, RBX and RBP.
+So those two have to be saved in the entrance, and restored at the exit.
+Again, the incoming function parameters are further out in the stack.
+	[slide 44]
+But wait, we are calling a child function, right?
+Let’s do a count.
+	[slide 45]
+We have added seven items into the stack since the function started.
+This is an odd number. The ABI specified that the stack must be aligned
+on 16-byte boundary, which means an even number of eight-byte words.
+	[slide 46]
+We must add padding into the stack in order to not violate the ABI.
+	[slide 47]
+Now, we have done everything according to the ABI.
+
+	[slide 48]
+Notice how we allocated space from the stack.
+It is a simple matter of mathematics:
+Subtract the desired number from the stack pointer.
+	[slide 49]
+To release the space, add that same number
+back to the stack pointer.
+
+	[slide 50]
+How about on the SNES?
+The PHX instruction is used for allocating space.
+	[slide 51]
+To allocate two words, issue PHX twice.
+	[slides 52..61, quick series with sound effects]
+More space, more PHX.
+	[pause, then slide 62, comedic stop sfx]
+To release the space, do just as many PLX instructions.
+
+You can see where this is going.
+It goes in the direction of awkward.
+
+	[slide 63]
+In the SNES there is no way to do arithmetic on the stack pointer.
+All arithmetics has to be performed on the A register.
+If you wish to subtract 30 words from the S register,
+it has to be first transferred into the X register,
+and from there into the A register,
+and then calculation is done,
+and then it’s transferred back into X, and then back into S.
+
+There is no simpler way.
+Fine and dandy, but
+	[slide 64]
+it clobbers A and X.
+
+This is very bad, if the function receives parameters
+in those registers.
+We cannot read the parameters
+if we overwrite the registers
+before we even get
+to the actual function body.
+
+	[slide 65]
+There is a way to save those registers though. 
+This alternative saves the X register,
+although it still clobbers A.
+
+	[slide 66]
+And even longer code saves both A and X.
+This is the perfect function prologue on the SNES.
+
+Awkward…!
+
+	[slide 67]
+In the function exit, very much similar code has to be done.
+This code avoids clobbering the A register,
+because it contains the function return value.
+
+It still clobbers X though.
+	[slide 68]
+It’s possible to preserve A and X in the exit boilerplate as well,
+	[slide 69, bling bling perfect case, halleluja SFX, bell across screen]
+meaning this is the absolutely perfect function exit code,
+	[abrupt sfx cut, cut to slide 67]
+but we don’t need that.
+
+	[slide 78]
+Tune in for more — next time in Making a Compiler!
+
+
+	[EPISODE BREAK]
+
+Hello! Remember my making-a-compiler series?
+If you have not seen the previous episodes yet,
+suggest you do watch them now.
+Otherwise you will be very confused when watching this video.
+
+	[code 10, vertical split screen 20-20-20]
+	[parallel: 100-120]
+	[parallel: 200-220]
+So, let’s begin with the fundamentals.
+This compiler targets multiple platforms.
+Each target architecture has a name, word size,
+list of registers, and so on, as discussed earlier.
+
+	[code 30]
+Then comes the list of assembler instructions,
+or rather, patterns of assembler code.
+	[code 40]
+Each pattern accomplishes some particular IR statement in the compiler.
+It begins with a snippet of assembler code.
+This particular snippet can solve the IR statement only,
+if the statement parameters match some particular criteria.
+	[code 60]
+In my design, the criteria can be one of the following four options:
+One of select CPU registers, or a memory variable, or a number literal,
+or the same as some previous operand in the same statement.
+	[code 90]
+The snippet may also have side-effects:
+It may clobber some other CPU registers
+with undefined values.
+	[code 95]
+In case multiple instructions fulfill the same outcome,
+a cost is used to weigh different options.
+
+	[code 300]
+Let us explore in practice how this works.
+	[code 400]
+Start with the x86 platform,
+since that is more familiar to most people.
+	[code 410]
+The MOV instruction, for instance, implements the COPY statement pretty conclusively.
+	[code 415]
+For zero-initializing a register, the XOR instruction is a bit more efficient.
+And to copy label references into registers,
+we must use the LEA instruction
+because that way we can use the RIP-relative addressing mode
+that is recommended on the x86_64.
+	[code 420]
+For negation, the x86 offers a NEG operand,
+but it only works if the source and the target are the same.
+If the operands are different, we can use multiply-by-minus-one,
+but then, the target must be a register.
+	[code 430]
+Similar thing happens with the ADD operation.
+The target must be same as one of the sources.
+	[code 435]
+There is, however, a three-operand ADD operation,
+although it’s sort of underhanded.
+We can abuse the address decoder to perform the sum
+of two registers and store the result in a third.
+But this only works if none of the operands is a memory variable.
+	[code 440]
+The INC and DEC instructions can be used as quicker alternatives
+when operating with +1 and -1 literals.
+	[code 450]
+For the READ statement, there’s not many alternatives.
+The MOVZX instruction will be used to read a byte from the memory
+and zero-extend it into a 32-bit register.
+The store into the 32-bit register will incidentally
+also clear the upper part of the register,
+so we can use EAX as the target to effect the whole RAX.
+Similar shenanigans go with the WRITE statement.
+	[code 460]
+For the equality test we can use the combination of CMP and SETE.
+Because the SETE instruction only sets the lowest 8 bits of the target register,
+the target register must be cleared first.
+Slightly different code is required if the target register matches one of the sources.
+	[code 470]
+NOP is of course just NOP.
+The IFNZ is a combination of a comparison and a branch.
+
+	[code 500]
+So far so good. Now let’s see what to do with the SNES platform.
+	[code 510]
+The TAX, TYA and so on instructions can be used to move data between any of the three registers.
+The LDA, LDX and LDY instructions can be used to initialize any of the registers
+with a constant value.
+However, only the A register can load data directly from the stack.
+It is possible, sort of, to load stack data into the Y register,
+but doing so will clobber the X register in the process.
+The same goes with the STA instruction,
+which writes data from the A register into memory.
+Remember, every time the code says “Mem”, it really means the stack.
+We could use globals instead of stack-relative variables,
+but then we could not compile recursion.
+
+The priority numbers on each of these lines,
+in case you are wondering, are arbitrary.
+They convey my idea of how favorable this instruction
+is compared to other instructions,
+and the compiler will use this information later.
+
+	[code 560]
+There is no NEG instruction on the SNES, so what we must do instead
+is subtract from zero. If the value is already in the A register,
+bitwise operations can be used to produce the arithmetic negation,
+but it’s a bit inconvenient.
+	[code 570]
+Arithmetic on the SNES can only be performed on the A register.
+However, quick increments of +1 or -1 can be done on any register
+with a single instruction.
+	[code 580]
+The INC operation can also use a memory operand,
+except if it’s a stack variable.
+However, stack addressing can be turned into indexed addressing
+by copying the stack pointer into the X register.
+This clobbers X, of course.
+
+	[code 600]
+Testing whether a variable is nonzero is a matter of testing
+whether it is greater or equal than one.
+This produces the result in the carry-flag.
+I utilize the carry-flag here,
+because it is possible the compiler had to perform some logistic
+operations in order to bring the source value into one of these
+registers, and the logistics must be undone before the branch.
+Nearly all of the logistic operations, such as LDA,
+touch the zero-flag, but none of them touch the carry flag.
+	[code 610]
+As an option, I also provide the possibility to test
+a memory variable directly,
+but in this case there can be no cleanup before the branch.
+The asterisk shall mark this limitation.
+	[code 630]
+If we need the equality test result in a register… [chuckles] Boy that’s going to be tricky.
+I will leave interpreting these snippets as an exercise to the reader.
+
+	[code 700]
+Now to make sure the list of instruction patterns is minimally redundant,
+a small change must be done into the IR code.
+Namely, instructions that are non-associative,
+that is, their operands can be given in any order,
+are always specified in a predictable order.
+I add a “non-associative” flag into the statements. It simply says
+whether the read-parameters are associative or not.
+
+This information will be utilized in a final optimization step:
+Canonization. In this step, each statement will be checked:
+If the statement is non-associative, its read parameters are sorted.
+	[code 760]
+Now is also a good time to convert all INIT statements into COPY
+statements.
+Dedicated INIT statements are not really needed anymore,
+considering that literals were already made into special
+parameters in episode 4B.
+		[code 780]
+The newly minted Canonize method will be added to the list
+of optimization methods to run.
+	
+	[code 800]
+Did I say I was going to make the IR code simpler?
+What I meant to say was I am going to add a few new statement types.
+An IFEQ statement, which combines the effects of EQ and IFNZ,
+and three new pseudo-statements which will be used only in the code generator.
+I will spare you the gruesome details of implementing those.
+Instead, let’s fast-forward…
+	[code 900]
+back to the instruction listings.
+This is the x86 section.
+	[code 910]
+And this is how we shall do the IFEQ statement.
+The three extra statements I added were SWAP, PUSH and POP.
+Swapping the contents of two variables can be convenient sometimes.
+So is the possibility to PUSH & POP directly from/to the stack,
+without using temporary variables.
+On the x86, any register or stack variable can be pushed to the
+stack with a single instruction.
+Even number literals can be pushed to the stack.
+The pop instruction is just as arbitrary.
+	[code 940]
+On the SNES however, things are not quite as awesome.
+There are no SWAP instructions at all.
+Well, there are XBA and XCE but they do different things.
+But any of the three base registers can be pushed and popped.
+Number literals can be pushed too, if anyone cares.
+	[code 950]
+The IFEQ instruction follows the same logic as the IFNZ instruction, mostly. 
+Some of these clobber the A register.
+And some of them can only be performed as the last instruction of the statement,
+because they rely on the Z flag rather than on the carry flag.
+	[code 981 (pause)]
+There is also the FCALL and RET statements
+that we will look into later.
+
+
+In the next episode, we will write the part that chooses the proper
+instructions from these tables to generate the actual program.
+
+Because YouTube does not reliably bring the videos
+from your favorite channels to the Recommendations
+listing on the front page, make sure to subscribe
+and click the bell icon to not miss new videos!
+
+See you again, and have a very pleasant day.
+
+
+
+
+	[EPISODE BREAK]
+
+	[code 1000]
+
+My compiler will compile each function individually.
+The compilation of a function will produce some statistics,
+and it will convert each statement into a list of assembler instructions.
+Basically each statement will be compiled separately,
+and it will produce a number of assembler instructions.
+Each generated instruction has two components:
+The code pattern that was chosen from the platform description,
+and the list of parameters applied to that pattern.
+
+	[code 1050]
+And here’s how to build it.
+Each function will be compiled individually.
+	[dramatic pause. music stops.]
+	[code 1100]
+Within the function, each statement will be compiled.
+This procedure follows pretty much the same logic as the Dump
+function that was shown in Episode 3 at 11:50 — in fact,
+it is pretty much a copypaste of it,
+	[code 1110]
+so I will fastforward this bit.
+	[code 2000]
+And we get to the most complex part of this compiler by far:
+The engine that converts IR statements into sequences of assembler instructions.
+
+It begins with collecting information.
+Information about the statement we are supposed to compile,
+and information about the present environment.
+
+For each variable that may possible influence the compilation
+decisions somehow,
+identify whether this variable is used as a source or a target in the statement,
+whether its value cannot be overwritten but must be preserved,
+whether this variable is a CPU register that plays a special role
+in one of the assembler patterns that are candidates for this compilation,
+and whether this variable resides in stack,
+or whether it is a callee-saves or caller-saves register.
+
+	[code 2100]
+Once this is done, classify each variable and sort them by priority.
+Variables that likely require special attention are put first in the list,
+and variables that should be only used as last-resort are put last in the list.
+	[code 2120]
+Then, we select the first few variables from the list until we find one
+that has low priority enough that it does not need to be considered.
+
+	[TODO: Explain the State & Dijkstra using slides]
+<explanations>
+
+	[code 2200]
+So the state contains three things.
+The state for each register or variable.
+That is, what is the value currently held in the variable.
+The contents of the last-in-first-out stack,
+if PUSH and POP instructions have been used.
+
+And the information whether the actual calculation,
+the goal of this particular compilation,
+has been performed or not.
+
+If the calculation has been performed,
+ostensibly the result of the calculation should be
+in one of these registers.
+This is indicated by the “correct” flag.
+
+	[code 2230]
+The rest of this structure is pretty much boilerplate.
+
+	[code 2300]
+So we begin by creating an initial state.
+In the initial state, all registers are clobberable,
+meaning their contents are totally irrelevant
+and can be overwritten,
+except those that were earlier marked as either
+must-be-preserved,
+and those that contain an input to the goal instruction.
+
+	[code 2400]
+Next, we go through all the assembler instruction patterns,
+and choose the list of patterns that might possibly contribute
+towards the desired outcome.
+	[code 2420]
+We can actually narrow down this list by skipping assembler instructions
+that explicitly depend on CPU registers or immediate parameters
+that we can ascertain they are not part of the solution.
+
+There are three kinds of things to validate,
+when testing an instruction pattern.
+Remember, the instruction patterns may take three kinds of parameters:
+Immediates, that is number literals;
+CPU registers, and memory variables.
+
+At this point, this validation is completely optional.
+It just speeds up the compilation.
+However, these validation functions will be used again very soon,
+so it makes sense to write them now.
+
+	[code 2600]
+The actual choosing of assembler instructions happens now.
+
+I made a template function that performs Dijkstra’s algorithm.
+It is a bit too long to include in this video, but you can find
+the download link in the video description.
+
+	[stop here, and overlay the Dijkstra function definition]
+First, it takes several type inputs:
+Distances are unsigned integers.
+Transitions between states are hw_instructions.
+States themselves are, well, states.
+And because it uses an unordered_map internally,
+it also takes a hash function.
+
+Those are the type parameters.
+The value parameters are the starting state,
+a boolean flag that indicates if the starting state
+already happens to be goal state,
+and two functors.
+The first functor will supply the Dijkstra algorithm
+with transitions, given some particular state.
+And the second functor will receive the shortest
+chain of transitions when the algorithm finishes.
+
+	[code 2620]
+So, at the end of this we receive the list of instructions
+that fulfilled this IR statement.
+
+	[code 2630]
+However, it is possible that the algorithm
+finds no sequence of instructions at all.
+
+An example of a situation where this can happen
+is when you call a function and you have lots of variables
+that must be preserved,
+but are currently being stored in CPU registers
+that will be clobbered by the called function.
+In that case, we need to add more temporary variables
+to the scope of the Dijkstra algorithm.
+	[code 2640]
+In that case, we go back.
+For the sake of debugging,
+we might add some reporting
+so we can observe how the compiler is working.
+	[code 2700]
+The other part of the Dijkstra interface
+is finding transitions.
+Transitions are the CPU instructions that
+produce a new state, given some previous state.
+in terms of the Dijkstra algorithm.
+So we check through all the instruction patterns
+that were previously chosen as candidates.
+
+Each pattern will be inspected.
+
+	[Slide 70, x86_64 ADD]
+	[Since the title includes "Flashback",
+	[do a fade through white, with the Papers Please flash sfx]
+Now remember how the patterns look.
+	[Slides 71,72,73, 74; highlight as it goes on]
+It might say this pattern requires three parameters,
+and the first parameter can be ANY variable as long
+as it’s in a CPU register,
+the second parameter must be the exact same thing
+as the first parameter,
+and the third parameter can be ANY variable
+as long as it’s stored in memory
+and not a CPU register.
+	[TODO: Continue Slide with examples]
+So any of these could be a valid expansion
+for this pattern.
+
+It is obvious that we need two nested loops.
+One that iterates through all possible expansions
+for the single parameter,
+and other that iterates through all parameters.
+	[code 
+This all goes inside the loop that walks
+through and tests all patterns, that is.
+
+
+
+
