@@ -58,19 +58,26 @@ Files: `ep5/`
 
 ### Episode 5A: Fundamental Principles
 
+Video link: https://youtu.be/bIvi6FNyiJA  
+Episode date: 2018-06-18
+
+Files: `ep6/`
+
+### Episode 5B: Data Implementation
+
+Video link: https://youtu.be/KNYCUJOzj5c  
+Episode date: 2018-10-19
+
+Files: `ep6/`
+
+### Episode 5C: Engine Implementation
+
 Video link: TBA  
 Episode date: TBA
 
 Files: `ep6/`
 
-### Episode 5B: Implementation
-
-Video link: TBA  
-Episode date: TBA
-
-Files: `ep6/`
-
-### Episode 5C: Tests and Afterthoughts
+### Episode 5D: Tests and Afterthoughts
 
 Video link: TBA  
 Episode date: TBA
